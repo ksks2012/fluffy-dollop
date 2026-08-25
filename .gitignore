@@ -1,0 +1,12 @@
+.vscode
+
+**/var/**
+**/cmd/**
+**/dataset/**
+**/build/**
+**/build-debug/**
+**/test_code/**
+
+**/**.o
+
+framework/etc/benchmarks/**
