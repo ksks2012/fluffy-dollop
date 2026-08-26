@@ -4,11 +4,11 @@
 
 **Blocked by:** None — can start immediately.
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] CMakeLists.txt configured for C++17
-- [ ] `Gate` base class with virtual `evaluate(vector<int>& wires)` (in-place mutation)
-- [ ] `ToffoliGate(control1, control2, target)` — flips `wires[target]` iff both controls are 1
-- [ ] `CnotGate(control, target)` — XORs `wires[target]` with `wires[control]`
-- [ ] `NotGate(target)` — flips `wires[target]`
-- [ ] Driver creates gates, initializes wire vector, evaluates, and prints results
+- [x] CMakeLists.txt configured for C++17
+- [x] `Gate` base class with virtual `evaluate(vector<int>& wires)` (in-place mutation)
+- [x] `ToffoliGate(control1, control2, target)` — flips `wires[target]` iff both controls are 1
+- [x] `CnotGate(control, target)` — XORs `wires[target]` with `wires[control]`
+- [x] `NotGate(target)` — flips `wires[target]`
+- [x] Driver creates gates, initializes wire vector, evaluates, and prints results
