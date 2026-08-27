@@ -79,4 +79,19 @@ The 2-bit circuit is used solely to validate correctness of the pipeline and the
 
 ---
 
-## 4. File Structure (Planned)
+## 4. Coding Standards
+
+### .hpp / .cpp Separation
+
+| Rule | Detail |
+|------|--------|
+| `.hpp` (headers) | Class declarations, inline trivial methods (≤ 3 lines, no complex control flow), `constexpr` / `consteval` functions, template implementations. |
+| `.cpp` (source) | Non-trivial method implementations, free functions, `main()`, anything with loops / conditionals / allocations. |
+| Header-only acceptable | Small utility classes or gate types where all methods are trivial getters and single-expression evaluators (e.g., current `Gate` hierarchy). |
+| When to split | When a method exceeds ~5 lines, uses local variables, or has branching — move implementation to `.cpp`. |
+| Include guard | `#pragma once` for all headers. |
+| Forward declarations | Prefer forward declarations in headers to minimize include dependencies. |
+
+---
+
+## 5. File Structure (Planned)

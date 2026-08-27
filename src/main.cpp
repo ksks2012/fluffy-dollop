@@ -2,6 +2,8 @@
 #include <vector>
 #include <memory>
 #include "gate.h"
+#include "circuit.hpp"
+#include "adder.hpp"
 
 int main() {
     std::cout << "=== Gate driver demo ===\n\n";
@@ -47,6 +49,30 @@ int main() {
     for (auto& g : chain)
         g->evaluate(wires);
     std::cout << "  after:  [" << wires[0] << "," << wires[1] << "," << wires[2] << "]\n";
+
+    // --- 2-bit adder demo ---
+    std::cout << "\n=== 2-bit reversible adder ===\n";
+    auto adder = make_2bit_adder();
+    std::cout << "Gate count: " << adder.gate_count() << "\n";
+    std::cout << "Wire count: " << adder.num_wires() << "\n\n";
+    std::cout << "  A  B Cin | S1 S0 Cout | sum\n";
+    std::cout << "  ---------+------------+----\n";
+    for (int bits = 0; bits < 32; ++bits) {
+        int A1  = (bits >> 4) & 1;
+        int A0  = (bits >> 3) & 1;
+        int B1  = (bits >> 2) & 1;
+        int B0  = (bits >> 1) & 1;
+        int Cin =  bits       & 1;
+        int A = A1 * 2 + A0;
+        int B = B1 * 2 + B0;
+        auto out = adder.evaluate({A1, A0, B1, B0, Cin});
+        int result = out[2] * 4 + out[0] * 2 + out[1];
+        std::cout << "  " << A << "  " << B << "   " << Cin
+                  << "  |  " << out[0] << "  " << out[1] << "    " << out[2]
+                  << "  | " << result
+                  << (result != A + B + Cin ? "  *** ERROR ***" : "")
+                  << "\n";
+    }
 
     return 0;
 }

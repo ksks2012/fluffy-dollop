@@ -58,12 +58,12 @@ Spot-checks:
 
 **Blocked by:** 0001
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] `Circuit` class with adjacency-list gate storage
-- [ ] Wire management with pre-allocated zero ancilla wires
-- [ ] 2-bit ripple-carry adder constructed per canonical specification above
-- [ ] `Circuit::evaluate(vector<int> input)` — copies input into wire state, runs gates in-place, returns output slice
-- [ ] Exhaustive truth-table check: all 32 inputs produce correct S1, S0, Cout
-- [ ] **Ancilla invariant check**: after evaluation, all ancilla wires must remain 0
-- [ ] Gate count printed
+- [x] `Circuit` class with adjacency-list gate storage
+- [x] Wire management with pre-allocated zero ancilla wires
+- [x] 2-bit ripple-carry adder constructed per canonical specification above
+- [x] `Circuit::evaluate(vector<int> input)` — copies input into wire state, runs gates in-place, returns output slice
+- [x] Exhaustive truth-table check: all 32 inputs produce correct S1, S0, Cout
+- [x] **Ancilla invariant check**: after evaluation, all ancilla wires must remain 0
+- [x] Gate count printed
