@@ -1,9 +1,11 @@
 #include <iostream>
 #include <vector>
 #include <memory>
+#include <random>
 #include "gate.h"
 #include "circuit.hpp"
 #include "adder.hpp"
+#include "sandwich.hpp"
 
 int main() {
     std::cout << "=== Gate driver demo ===\n\n";
@@ -73,6 +75,17 @@ int main() {
                   << (result != A + B + Cin ? "  *** ERROR ***" : "")
                   << "\n";
     }
+
+    // --- Sandwich demo ---
+    std::cout << "\n=== Sandwich demo (seed=42, chain_len=8, extra_ancilla=4) ===\n";
+    auto sandwiched = make_2bit_adder();
+    std::cout << "Gate count before: " << sandwiched.gate_count() << "\n";
+    std::mt19937 rng(42);
+    apply_sandwich(sandwiched, {9, 10, 11, 12}, 8, rng);
+    std::cout << "Gate count after:  " << sandwiched.gate_count() << "\n";
+    std::cout << "Wire count after:  " << sandwiched.num_wires() << "\n";
+    std::cout << "Overhead ratio:    "
+              << static_cast<double>(sandwiched.gate_count()) / 15.0 << "x\n";
 
     return 0;
 }

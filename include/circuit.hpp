@@ -15,6 +15,14 @@ public:
 
     void add_gate(std::unique_ptr<Gate> gate);
 
+    // Insert a gate at an arbitrary position in the gate list.
+    // insert_gate(0, g) prepends; insert_gate(gate_count(), g) appends.
+    void insert_gate(int pos, std::unique_ptr<Gate> gate);
+
+    // Expand the wire vector to cover new_num_wires total wires.
+    // New wires are zero-initialized.  No-op if already large enough.
+    void extend_wires(int new_num_wires);
+
     std::vector<int> evaluate(const std::vector<int>& input);
 
     const std::vector<int>& last_wires() const { return wires_; }

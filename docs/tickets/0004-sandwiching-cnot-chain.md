@@ -37,11 +37,11 @@ Why equivalence is guaranteed:
 
 **Blocked by:** 0002
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] Random CNOT chain generator (random wire pairs from available wires)
-- [ ] Insert forward chain before first gate of critical section
-- [ ] Insert reversed chain after last gate of critical section
-- [ ] Truth-table check: all 32 inputs still produce correct output
-- [ ] **Ancilla invariant check**: ancilla wires remain 0 after sandwiching
-- [ ] Gate count printed before and after
+- [x] Random CNOT chain generator (random wire pairs from available wires)
+- [x] Insert forward chain before first gate of critical section
+- [x] Insert reversed chain after last gate of critical section
+- [x] Truth-table check: all 32 inputs still produce correct output
+- [x] **Ancilla invariant check**: ancilla wires remain 0 after sandwiching
+- [x] Gate count printed before and after

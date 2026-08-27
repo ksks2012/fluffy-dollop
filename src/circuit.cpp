@@ -27,6 +27,17 @@ void Circuit::add_gate(std::unique_ptr<Gate> gate) {
     gates_.push_back(std::move(gate));
 }
 
+void Circuit::insert_gate(int pos, std::unique_ptr<Gate> gate) {
+    gates_.insert(gates_.begin() + pos, std::move(gate));
+}
+
+void Circuit::extend_wires(int new_num_wires) {
+    if (new_num_wires > num_wires_) {
+        num_wires_ = new_num_wires;
+        wires_.resize(new_num_wires, 0);
+    }
+}
+
 std::vector<int> Circuit::evaluate(const std::vector<int>& input) {
     std::fill(wires_.begin(), wires_.end(), 0);
     for (int i = 0; i < num_inputs_; ++i)
