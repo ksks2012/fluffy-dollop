@@ -18,11 +18,21 @@ public:
     std::vector<int> evaluate(const std::vector<int>& input);
 
     const std::vector<int>& last_wires() const { return wires_; }
+    const std::vector<std::unique_ptr<Gate>>& gates_ref() const { return gates_; }
 
     int gate_count()  const { return static_cast<int>(gates_.size()); }
     int num_wires()   const { return num_wires_; }
     int num_inputs()  const { return num_inputs_; }
     const std::vector<int>& output_wires() const { return output_wires_; }
+
+    // Returns gate indices in a valid topological ordering (Kahn's algorithm).
+    // Gates that share no data dependency may appear in either order.
+    std::vector<int> topological_sort() const;
+
+    // Returns depth[i] for each gate i.
+    // Primary input wires have depth 0; gate depth = 1 + max(predecessor depths).
+    // Gates at the same depth share no data dependencies and can run in parallel.
+    std::vector<int> compute_depth_levels() const;
 
 private:
     int num_wires_;

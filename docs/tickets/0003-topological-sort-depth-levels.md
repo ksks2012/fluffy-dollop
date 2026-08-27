@@ -4,9 +4,9 @@
 
 **Blocked by:** 0002
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] `Circuit::topological_sort()` returns a valid topological ordering
-- [ ] `Circuit::compute_depth_levels()` assigns correct depth to each gate
-- [ ] Verification: sorted order respects all wire dependencies
-- [ ] Verification: gates at same depth share no data dependencies
+- [x] `Circuit::topological_sort()` returns a valid topological ordering
+- [x] `Circuit::compute_depth_levels()` assigns correct depth to each gate
+- [x] Verification: sorted order respects all wire dependencies
+- [x] Verification: gates at same depth share no data dependencies

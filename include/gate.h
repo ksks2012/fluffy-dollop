@@ -10,6 +10,11 @@ class Gate {
 public:
     virtual ~Gate() = default;
     virtual void evaluate(std::vector<int>& wires) const = 0;
+
+    // Wire dependency interface — used by Circuit::topological_sort() and
+    // Circuit::compute_depth_levels().
+    virtual int target_wire() const = 0;                   // the single wire this gate writes to
+    virtual std::vector<int> touched_wires() const = 0;   // all wires this gate accesses (controls + target)
 };
 
 // ---------------------------------------------------------------------------
@@ -30,6 +35,9 @@ public:
     int control2() const { return control2_; }
     int target()   const { return target_;   }
 
+    int target_wire() const override { return target_; }
+    std::vector<int> touched_wires() const override { return {control1_, control2_, target_}; }
+
 private:
     int control1_, control2_, target_;
 };
@@ -49,6 +57,9 @@ public:
     int control() const { return control_; }
     int target()  const { return target_;  }
 
+    int target_wire() const override { return target_; }
+    std::vector<int> touched_wires() const override { return {control_, target_}; }
+
 private:
     int control_, target_;
 };
@@ -65,6 +76,9 @@ public:
     }
 
     int target() const { return target_; }
+
+    int target_wire() const override { return target_; }
+    std::vector<int> touched_wires() const override { return {target_}; }
 
 private:
     int target_;

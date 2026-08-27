@@ -1,5 +1,6 @@
 #include <iostream>
 #include <vector>
+#include <algorithm>
 #include "circuit.hpp"
 #include "adder.hpp"
 
@@ -169,6 +170,207 @@ static void test_adder_ancilla_invariant() {
 }
 
 // ---------------------------------------------------------------------------
+// Helpers for topological sort and depth tests
+// ---------------------------------------------------------------------------
+
+// Mirror of the dependency rule in circuit.cpp so tests are self-contained.
+static bool test_dependent(const Gate& a, const Gate& b) {
+    int ta = a.target_wire(), tb = b.target_wire();
+    for (int w : b.touched_wires()) if (w == ta) return true;
+    for (int w : a.touched_wires()) if (w == tb) return true;
+    return false;
+}
+
+// ---------------------------------------------------------------------------
+// Gate wire interface tests
+// ---------------------------------------------------------------------------
+static void test_gate_wire_interface() {
+    // ToffoliGate
+    ToffoliGate tof(1, 3, 8);
+    CHECK(tof.target_wire() == 8);
+    auto tw = tof.touched_wires();
+    CHECK(tw.size() == 3);
+    CHECK(std::find(tw.begin(), tw.end(), 1) != tw.end());
+    CHECK(std::find(tw.begin(), tw.end(), 3) != tw.end());
+    CHECK(std::find(tw.begin(), tw.end(), 8) != tw.end());
+
+    // CnotGate
+    CnotGate cnot(0, 5);
+    CHECK(cnot.target_wire() == 5);
+    auto cw = cnot.touched_wires();
+    CHECK(cw.size() == 2);
+    CHECK(std::find(cw.begin(), cw.end(), 0) != cw.end());
+    CHECK(std::find(cw.begin(), cw.end(), 5) != cw.end());
+
+    // NotGate
+    NotGate ng(7);
+    CHECK(ng.target_wire() == 7);
+    auto nw = ng.touched_wires();
+    CHECK(nw.size() == 1);
+    CHECK(nw[0] == 7);
+}
+
+// ---------------------------------------------------------------------------
+// compute_depth_levels — simple circuit with known depths
+//
+//   Wire 0: input
+//   Gate 0: CNOT(0→1)   depth=1
+//   Gate 1: CNOT(0→2)   depth=1  (independent of gate 0)
+//   Gate 2: CNOT(1→2)   depth=2  (RAW on wire 1 from gate 0; WAW on wire 2 from gate 1)
+// ---------------------------------------------------------------------------
+static void test_depth_two_parallel_then_serial() {
+    Circuit c(3, 1, {1, 2});
+    c.add_gate(std::make_unique<CnotGate>(0, 1));
+    c.add_gate(std::make_unique<CnotGate>(0, 2));
+    c.add_gate(std::make_unique<CnotGate>(1, 2));
+
+    auto d = c.compute_depth_levels();
+    CHECK(d.size() == 3);
+    CHECK(d[0] == 1);
+    CHECK(d[1] == 1);
+    CHECK(d[2] == 2);
+}
+
+// ---------------------------------------------------------------------------
+// compute_depth_levels — serial chain: each gate depends on the previous
+// ---------------------------------------------------------------------------
+static void test_depth_serial_chain() {
+    Circuit c(2, 1, {1});
+    c.add_gate(std::make_unique<CnotGate>(0, 1));  // depth 1
+    c.add_gate(std::make_unique<NotGate>(1));       // depth 2 (WAW on wire 1)
+    c.add_gate(std::make_unique<CnotGate>(0, 1));  // depth 3 (WAW on wire 1)
+
+    auto d = c.compute_depth_levels();
+    CHECK(d.size() == 3);
+    CHECK(d[0] == 1);
+    CHECK(d[1] == 2);
+    CHECK(d[2] == 3);
+}
+
+// ---------------------------------------------------------------------------
+// topological_sort — parallel-then-serial: output must be a valid permutation
+// that respects dependencies
+// ---------------------------------------------------------------------------
+static void test_topo_sort_parallel_then_serial() {
+    Circuit c(3, 1, {1, 2});
+    c.add_gate(std::make_unique<CnotGate>(0, 1));   // gate 0
+    c.add_gate(std::make_unique<CnotGate>(0, 2));   // gate 1 (independent of 0)
+    c.add_gate(std::make_unique<CnotGate>(1, 2));   // gate 2 (depends on 0 and 1)
+
+    auto order = c.topological_sort();
+    CHECK(order.size() == 3);
+
+    // Must be a permutation of {0,1,2}
+    std::vector<int> sorted = order;
+    std::sort(sorted.begin(), sorted.end());
+    CHECK(sorted == (std::vector<int>{0, 1, 2}));
+
+    // Gate 2 must appear after both gate 0 and gate 1
+    auto pos = [&](int g) {
+        return static_cast<int>(std::find(order.begin(), order.end(), g) - order.begin());
+    };
+    CHECK(pos(0) < pos(2));
+    CHECK(pos(1) < pos(2));
+}
+
+// ---------------------------------------------------------------------------
+// topological_sort — 2-bit adder: verify all dependency pairs are respected
+// ---------------------------------------------------------------------------
+static void test_adder_topo_sort_valid() {
+    auto adder = make_2bit_adder();
+    int n = adder.gate_count();
+    auto order = adder.topological_sort();
+
+    // 1. Must be a permutation of {0..n-1}
+    CHECK(static_cast<int>(order.size()) == n);
+    std::vector<int> sorted_order = order;
+    std::sort(sorted_order.begin(), sorted_order.end());
+    bool is_perm = true;
+    for (int i = 0; i < n; ++i) if (sorted_order[i] != i) { is_perm = false; break; }
+    CHECK(is_perm);
+
+    // 2. Build position map
+    std::vector<int> pos(n);
+    for (int p = 0; p < n; ++p) pos[order[p]] = p;
+
+    // 3. For every dependent pair (i,j) with i<j, i must precede j in output
+    int violations = 0;
+    const auto& gates = adder.gates_ref();
+    for (int i = 0; i < n; ++i) {
+        for (int j = i + 1; j < n; ++j) {
+            if (test_dependent(*gates[i], *gates[j]) && pos[i] >= pos[j]) {
+                std::cerr << "  topo violation: gate " << i << " must come before " << j
+                          << " but positions are " << pos[i] << " >= " << pos[j] << "\n";
+                ++violations;
+            }
+        }
+    }
+    CHECK(violations == 0);
+}
+
+// ---------------------------------------------------------------------------
+// compute_depth_levels — 2-bit adder: verify exact expected depths
+//
+// Depths derived by hand from the dependency DAG (see ticket 0003):
+//   Depth 1: gates 0,3,6,9
+//   Depth 2: gates 1,4,7
+//   Depth 3: gates 2,5
+//   Depth 4: gates 8,10
+//   Depth 5: gate 11
+//   Depth 6: gate 12
+//   Depth 7: gate 13
+//   Depth 8: gate 14
+// ---------------------------------------------------------------------------
+static void test_adder_depth_levels_correct() {
+    auto adder = make_2bit_adder();
+    auto d = adder.compute_depth_levels();
+    CHECK(d.size() == 15);
+
+    // depth 1
+    CHECK(d[0]  == 1);
+    CHECK(d[3]  == 1);
+    CHECK(d[6]  == 1);
+    CHECK(d[9]  == 1);
+    // depth 2
+    CHECK(d[1]  == 2);
+    CHECK(d[4]  == 2);
+    CHECK(d[7]  == 2);
+    // depth 3
+    CHECK(d[2]  == 3);
+    CHECK(d[5]  == 3);
+    // depth 4
+    CHECK(d[8]  == 4);
+    CHECK(d[10] == 4);
+    // depth 5+
+    CHECK(d[11] == 5);
+    CHECK(d[12] == 6);
+    CHECK(d[13] == 7);
+    CHECK(d[14] == 8);
+}
+
+// ---------------------------------------------------------------------------
+// compute_depth_levels — 2-bit adder: same-depth gates share no dependencies
+// ---------------------------------------------------------------------------
+static void test_adder_same_depth_gates_independent() {
+    auto adder = make_2bit_adder();
+    auto d = adder.compute_depth_levels();
+    const auto& gates = adder.gates_ref();
+    int n = adder.gate_count();
+
+    int violations = 0;
+    for (int i = 0; i < n; ++i) {
+        for (int j = i + 1; j < n; ++j) {
+            if (d[i] == d[j] && test_dependent(*gates[i], *gates[j])) {
+                std::cerr << "  same-depth dependency: gates " << i << " and " << j
+                          << " both at depth " << d[i] << " but are dependent\n";
+                ++violations;
+            }
+        }
+    }
+    CHECK(violations == 0);
+}
+
+// ---------------------------------------------------------------------------
 int main() {
     // Circuit class
     test_circuit_empty_evaluate_returns_zeros();
@@ -184,6 +386,17 @@ int main() {
     test_adder_zero();
     test_adder_exhaustive_truth_table();
     test_adder_ancilla_invariant();
+    // Gate wire interface
+    test_gate_wire_interface();
+    // Depth levels
+    test_depth_two_parallel_then_serial();
+    test_depth_serial_chain();
+    // Topological sort
+    test_topo_sort_parallel_then_serial();
+    test_adder_topo_sort_valid();
+    // Adder depth
+    test_adder_depth_levels_correct();
+    test_adder_same_depth_gates_independent();
 
     if (s_failed == 0)
         std::cout << "All " << s_run << " tests passed.\n";
