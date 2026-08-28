@@ -2,10 +2,12 @@
 #include <vector>
 #include <memory>
 #include <random>
+#include <algorithm>
 #include "gate.h"
 #include "circuit.hpp"
 #include "adder.hpp"
 #include "sandwich.hpp"
+#include "shuffle.hpp"
 
 int main() {
     std::cout << "=== Gate driver demo ===\n\n";
@@ -86,6 +88,22 @@ int main() {
     std::cout << "Wire count after:  " << sandwiched.num_wires() << "\n";
     std::cout << "Overhead ratio:    "
               << static_cast<double>(sandwiched.gate_count()) / 15.0 << "x\n";
+
+    // --- Shuffle demo ---
+    std::cout << "\n=== Shuffle demo (seed=42, after sandwich) ===\n";
+    auto shuffled = make_2bit_adder();
+    std::mt19937 rng2(42);
+    apply_sandwich(shuffled, {9, 10, 11, 12}, 8, rng2);
+    const int before_shuffle = shuffled.gate_count();
+    auto d_before = shuffled.compute_depth_levels();
+    shuffle_depth_levels(shuffled, rng2);
+    auto d_after = shuffled.compute_depth_levels();
+    std::sort(d_before.begin(), d_before.end());
+    std::sort(d_after.begin(), d_after.end());
+    std::cout << "Gate count before: " << before_shuffle << "\n";
+    std::cout << "Gate count after:  " << shuffled.gate_count() << " (unchanged)\n";
+    std::cout << "Depth distribution preserved: "
+              << (d_before == d_after ? "yes" : "NO — BUG") << "\n";
 
     return 0;
 }

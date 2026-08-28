@@ -99,3 +99,11 @@ std::vector<int> Circuit::compute_depth_levels() const {
     }
     return depth;
 }
+
+void Circuit::reorder_gates(const std::vector<int>& new_order) {
+    std::vector<std::unique_ptr<Gate>> reordered;
+    reordered.reserve(gates_.size());
+    for (int idx : new_order)
+        reordered.push_back(std::move(gates_[idx]));
+    gates_ = std::move(reordered);
+}

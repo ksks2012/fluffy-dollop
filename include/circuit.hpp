@@ -42,6 +42,10 @@ public:
     // Gates at the same depth share no data dependencies and can run in parallel.
     std::vector<int> compute_depth_levels() const;
 
+    // Reorder the gate list according to new_order (a permutation of 0..gate_count()-1).
+    // new_order[0] is the index of the gate that should appear first, etc.
+    void reorder_gates(const std::vector<int>& new_order);
+
 private:
     int num_wires_;
     int num_inputs_;

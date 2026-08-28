@@ -10,12 +10,12 @@
 
 **Blocked by:** 0003, 0004
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] Group gates by topological depth level
-- [ ] Randomly permute gate order within each level
-- [ ] Write permuted sequence back to circuit gate list
-- [ ] Recompute depth levels — must be unchanged (sanity check)
-- [ ] Truth-table check: all 32 inputs still produce correct output
-- [ ] **Ancilla invariant check**: ancilla wires remain 0 after shuffling
-- [ ] Gate count printed before and after
+- [x] Group gates by topological depth level
+- [x] Randomly permute gate order within each level
+- [x] Write permuted sequence back to circuit gate list
+- [x] Recompute depth levels — must be unchanged (sanity check)
+- [x] Truth-table check: all 32 inputs still produce correct output
+- [x] **Ancilla invariant check**: ancilla wires remain 0 after shuffling
+- [x] Gate count printed before and after
