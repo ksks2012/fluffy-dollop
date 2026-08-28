@@ -6,10 +6,10 @@
 
 **Blocked by:** 0002
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] Junk gate generator: Toffoli with at least one zero-ancilla control wire
-- [ ] Insert junk gates at valid positions (respect topological ordering — must not precede any gate that writes to its input wires)
-- [ ] Truth-table check: all 32 inputs still produce correct output
-- [ ] **Ancilla invariant check**: ancilla wires remain 0 after injection
-- [ ] Gate count printed before and after
+- [x] Junk gate generator: Toffoli with at least one zero-ancilla control wire
+- [x] Insert junk gates at valid positions (respect topological ordering — must not precede any gate that writes to its input wires)
+- [x] Truth-table check: all 32 inputs still produce correct output
+- [x] **Ancilla invariant check**: ancilla wires remain 0 after injection
+- [x] Gate count printed before and after

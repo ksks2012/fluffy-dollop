@@ -8,6 +8,7 @@
 #include "adder.hpp"
 #include "sandwich.hpp"
 #include "shuffle.hpp"
+#include "inject_junk.hpp"
 
 int main() {
     std::cout << "=== Gate driver demo ===\n\n";
@@ -104,6 +105,17 @@ int main() {
     std::cout << "Gate count after:  " << shuffled.gate_count() << " (unchanged)\n";
     std::cout << "Depth distribution preserved: "
               << (d_before == d_after ? "yes" : "NO — BUG") << "\n";
-
+    // --- Junk injection demo ---
+    std::cout << "\n=== Junk injection demo (seed=42, count=12, junk_wires=3) ===\n";
+    auto injected = make_2bit_adder();
+    std::mt19937 rng3(42);
+    apply_sandwich(injected, {9, 10, 11, 12}, 8, rng3);
+    shuffle_depth_levels(injected, rng3);
+    const int before_inject = injected.gate_count();
+    inject_junk_gates(injected, {13, 14, 15}, 12, rng3);
+    std::cout << "Gate count before: " << before_inject << "\n";
+    std::cout << "Gate count after:  " << injected.gate_count() << "\n";
+    std::cout << "Overhead ratio:    "
+              << static_cast<double>(injected.gate_count()) / 15.0 << "x\n";
     return 0;
 }

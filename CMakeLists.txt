@@ -5,7 +5,7 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-add_library(common_lib STATIC src/circuit.cpp src/adder.cpp src/sandwich.cpp src/shuffle.cpp)
+add_library(common_lib STATIC src/circuit.cpp src/adder.cpp src/sandwich.cpp src/shuffle.cpp src/inject_junk.cpp)
 target_include_directories(common_lib PUBLIC ${CMAKE_SOURCE_DIR}/include)
 
 # Driver
@@ -29,3 +29,7 @@ add_test(NAME sandwich COMMAND test_sandwich)
 add_executable(test_shuffle tests/test_shuffle.cpp)
 target_link_libraries(test_shuffle PRIVATE common_lib)
 add_test(NAME shuffle COMMAND test_shuffle)
+
+add_executable(test_inject_junk tests/test_inject_junk.cpp)
+target_link_libraries(test_inject_junk PRIVATE common_lib)
+add_test(NAME inject_junk COMMAND test_inject_junk)
