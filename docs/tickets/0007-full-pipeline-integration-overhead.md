@@ -11,12 +11,12 @@
 
 **Blocked by:** 0005, 0006
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] Sequential phase execution in `main.cpp`
-- [ ] Overhead ratio printed after each phase (`transformed / original gate count`)
-- [ ] Final exhaustive truth-table verification over full pipeline
-- [ ] **Ancilla invariant check** at each phase boundary
-- [ ] Deterministic seed printed at program start (`std::mt19937`, seed = 42)
-- [ ] End-to-end demo produces correct output
-- [ ] (Optional) Phase toggle via command-line flags or compile-time constants for isolated debugging
+- [x] Sequential phase execution in `main.cpp`
+- [x] Overhead ratio printed after each phase (`transformed / original gate count`)
+- [x] Final exhaustive truth-table verification over full pipeline
+- [x] **Ancilla invariant check** at each phase boundary
+- [x] Deterministic seed printed at program start (`std::mt19937`, seed = 42)
+- [x] End-to-end demo produces correct output
+- [x] (Optional) Phase toggle via command-line flags (`--no-sandwich`, `--no-shuffle`, `--no-inject`)

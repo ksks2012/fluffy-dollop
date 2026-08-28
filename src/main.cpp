@@ -1,4 +1,5 @@
 #include <iostream>
+#include <iomanip>
 #include <vector>
 #include <memory>
 #include <random>
@@ -6,116 +7,63 @@
 #include "gate.h"
 #include "circuit.hpp"
 #include "adder.hpp"
-#include "sandwich.hpp"
-#include "shuffle.hpp"
-#include "inject_junk.hpp"
+#include "pipeline.hpp"
 
-int main() {
-    std::cout << "=== Gate driver demo ===\n\n";
+static void print_phase(const PhaseStats& p) {
+    std::cout << "  " << std::left << std::setw(10) << p.name
+              << "  gates=" << std::setw(4) << p.gate_count
+              << "  wires=" << std::setw(3) << p.wire_count
+              << "  overhead=" << std::fixed << std::setprecision(2) << p.overhead << "x"
+              << "  ancilla=" << (p.ancilla_ok ? "OK" : "FAIL")
+              << "\n";
+}
 
-    // --- ToffoliGate ---
-    std::cout << "ToffoliGate(ctrl1=0, ctrl2=1, tgt=2):\n";
-    for (int c1 : {0, 1})
-    for (int c2 : {0, 1}) {
-        std::vector<int> w = {c1, c2, 0};
-        ToffoliGate(0, 1, 2).evaluate(w);
-        std::cout << "  c1=" << c1 << " c2=" << c2
-                  << " -> wires[2]=" << w[2]
-                  << (c1 && c2 ? "  (flipped)" : "") << "\n";
+int main(int argc, char* argv[]) {
+    std::cout << "=== Gate hierarchy demo ===\n";
+    { std::vector<int> w={1,1,0}; ToffoliGate(0,1,2).evaluate(w);
+      std::cout << "  Toffoli(1,1,?) -> wires[2]=" << w[2] << "  (flipped)\n"; }
+    { std::vector<int> w={1,0};   CnotGate(0,1).evaluate(w);
+      std::cout << "  CNOT(1,?)     -> wires[1]=" << w[1] << "  (flipped)\n"; }
+    { std::vector<int> w={0};     NotGate(0).evaluate(w);
+      std::cout << "  NOT(0)        -> wires[0]=" << w[0] << "  (flipped)\n"; }
+
+    std::cout << "\n=== Full local-mixing pipeline ===\n";
+
+    PipelineConfig cfg;
+    for (int i = 1; i < argc; ++i) {
+        std::string arg(argv[i]);
+        if      (arg == "--no-sandwich") cfg.enable_sandwich = false;
+        else if (arg == "--no-shuffle")  cfg.enable_shuffle  = false;
+        else if (arg == "--no-inject")   cfg.enable_inject   = false;
     }
 
-    // --- CnotGate ---
-    std::cout << "\nCnotGate(ctrl=0, tgt=1):\n";
-    for (int c : {0, 1})
-    for (int t : {0, 1}) {
-        std::vector<int> w = {c, t};
-        CnotGate(0, 1).evaluate(w);
-        std::cout << "  ctrl=" << c << " tgt=" << t
-                  << " -> wires[1]=" << w[1] << "\n";
-    }
+    std::cout << "Seed: " << cfg.seed << "\n";
+    std::cout << "Phases enabled:"
+              << (cfg.enable_sandwich ? " sandwich" : "")
+              << (cfg.enable_shuffle  ? " shuffle"  : "")
+              << (cfg.enable_inject   ? " inject"   : "")
+              << "\n\n";
 
-    // --- NotGate ---
-    std::cout << "\nNotGate(tgt=0):\n";
-    for (int t : {0, 1}) {
-        std::vector<int> w = {t};
-        NotGate(0).evaluate(w);
-        std::cout << "  tgt=" << t << " -> wires[0]=" << w[0] << "\n";
-    }
+    std::cout << "  Phase         Gates   Wires   Overhead   Ancilla\n";
+    std::cout << "  ------------  ------  ------  ---------  -------\n";
 
-    // --- Polymorphic chain ---
-    std::cout << "\nPolymorphic chain [NOT(2), CNOT(2->1), Toffoli(1,2->0)] on {0,0,1}:\n";
-    std::vector<std::unique_ptr<Gate>> chain;
-    chain.push_back(std::make_unique<NotGate>(2));        // flip wire 2: 1->0... wait, let's pick interesting values
-    chain.push_back(std::make_unique<CnotGate>(2, 1));
-    chain.push_back(std::make_unique<ToffoliGate>(1, 2, 0));
+    auto result = run_full_pipeline(cfg);
+    for (const auto& p : result.phases) print_phase(p);
 
-    std::vector<int> wires = {0, 0, 1};
-    std::cout << "  before: [" << wires[0] << "," << wires[1] << "," << wires[2] << "]\n";
-    for (auto& g : chain)
-        g->evaluate(wires);
-    std::cout << "  after:  [" << wires[0] << "," << wires[1] << "," << wires[2] << "]\n";
+    bool tt_ok = check_truth_table(result.circuit);
+    std::cout << "\nFinal truth-table: " << (tt_ok ? "PASS (all 32 inputs correct)" : "FAIL") << "\n";
 
-    // --- 2-bit adder demo ---
-    std::cout << "\n=== 2-bit reversible adder ===\n";
-    auto adder = make_2bit_adder();
-    std::cout << "Gate count: " << adder.gate_count() << "\n";
-    std::cout << "Wire count: " << adder.num_wires() << "\n\n";
-    std::cout << "  A  B Cin | S1 S0 Cout | sum\n";
-    std::cout << "  ---------+------------+----\n";
-    for (int bits = 0; bits < 32; ++bits) {
-        int A1  = (bits >> 4) & 1;
-        int A0  = (bits >> 3) & 1;
-        int B1  = (bits >> 2) & 1;
-        int B0  = (bits >> 1) & 1;
-        int Cin =  bits       & 1;
-        int A = A1 * 2 + A0;
-        int B = B1 * 2 + B0;
-        auto out = adder.evaluate({A1, A0, B1, B0, Cin});
-        int result = out[2] * 4 + out[0] * 2 + out[1];
-        std::cout << "  " << A << "  " << B << "   " << Cin
-                  << "  |  " << out[0] << "  " << out[1] << "    " << out[2]
-                  << "  | " << result
-                  << (result != A + B + Cin ? "  *** ERROR ***" : "")
-                  << "\n";
-    }
+    const auto& last = result.phases.back();
+    bool all_ancilla = true;
+    for (const auto& p : result.phases) if (!p.ancilla_ok) { all_ancilla = false; break; }
 
-    // --- Sandwich demo ---
-    std::cout << "\n=== Sandwich demo (seed=42, chain_len=8, extra_ancilla=4) ===\n";
-    auto sandwiched = make_2bit_adder();
-    std::cout << "Gate count before: " << sandwiched.gate_count() << "\n";
-    std::mt19937 rng(42);
-    apply_sandwich(sandwiched, {9, 10, 11, 12}, 8, rng);
-    std::cout << "Gate count after:  " << sandwiched.gate_count() << "\n";
-    std::cout << "Wire count after:  " << sandwiched.num_wires() << "\n";
-    std::cout << "Overhead ratio:    "
-              << static_cast<double>(sandwiched.gate_count()) / 15.0 << "x\n";
+    std::cout << "\nSummary:\n"
+              << "  Original gate count : 15\n"
+              << "  Final gate count    : " << last.gate_count   << "\n"
+              << "  Final wire count    : " << last.wire_count   << "\n"
+              << "  Final overhead      : " << std::fixed << std::setprecision(2) << last.overhead << "x\n"
+              << "  Ancilla invariant   : " << (all_ancilla ? "OK (all phases)" : "FAIL") << "\n"
+              << "  Truth table         : " << (tt_ok ? "PASS" : "FAIL") << "\n";
 
-    // --- Shuffle demo ---
-    std::cout << "\n=== Shuffle demo (seed=42, after sandwich) ===\n";
-    auto shuffled = make_2bit_adder();
-    std::mt19937 rng2(42);
-    apply_sandwich(shuffled, {9, 10, 11, 12}, 8, rng2);
-    const int before_shuffle = shuffled.gate_count();
-    auto d_before = shuffled.compute_depth_levels();
-    shuffle_depth_levels(shuffled, rng2);
-    auto d_after = shuffled.compute_depth_levels();
-    std::sort(d_before.begin(), d_before.end());
-    std::sort(d_after.begin(), d_after.end());
-    std::cout << "Gate count before: " << before_shuffle << "\n";
-    std::cout << "Gate count after:  " << shuffled.gate_count() << " (unchanged)\n";
-    std::cout << "Depth distribution preserved: "
-              << (d_before == d_after ? "yes" : "NO — BUG") << "\n";
-    // --- Junk injection demo ---
-    std::cout << "\n=== Junk injection demo (seed=42, count=12, junk_wires=3) ===\n";
-    auto injected = make_2bit_adder();
-    std::mt19937 rng3(42);
-    apply_sandwich(injected, {9, 10, 11, 12}, 8, rng3);
-    shuffle_depth_levels(injected, rng3);
-    const int before_inject = injected.gate_count();
-    inject_junk_gates(injected, {13, 14, 15}, 12, rng3);
-    std::cout << "Gate count before: " << before_inject << "\n";
-    std::cout << "Gate count after:  " << injected.gate_count() << "\n";
-    std::cout << "Overhead ratio:    "
-              << static_cast<double>(injected.gate_count()) / 15.0 << "x\n";
-    return 0;
+    return (tt_ok && all_ancilla) ? 0 : 1;
 }
