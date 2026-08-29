@@ -180,7 +180,7 @@ static void test_inject_ancilla_invariant() {
 static void test_inject_full_pipeline_truth_table() {
     auto adder = make_2bit_adder();
     std::mt19937 rng(42);
-    apply_sandwich(adder, {9, 10, 11, 12}, 8, rng);
+    apply_sandwich(adder, {9, 10, 11, 12}, 8, SandwichMode::Safe, rng);
     shuffle_depth_levels(adder, rng);
     inject_junk_gates(adder, {13, 14, 15}, 12, rng);
     CHECK(adder_truth_table_errors(adder) == 0);
@@ -189,7 +189,7 @@ static void test_inject_full_pipeline_truth_table() {
 static void test_inject_full_pipeline_ancilla_invariant() {
     auto adder = make_2bit_adder();
     std::mt19937 rng(42);
-    apply_sandwich(adder, {9, 10, 11, 12}, 8, rng);
+    apply_sandwich(adder, {9, 10, 11, 12}, 8, SandwichMode::Safe, rng);
     shuffle_depth_levels(adder, rng);
     inject_junk_gates(adder, {13, 14, 15}, 12, rng);
     CHECK(ancilla_violations(adder) == 0);

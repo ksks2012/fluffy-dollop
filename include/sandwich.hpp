@@ -5,6 +5,20 @@
 #include "circuit.hpp"
 
 // ---------------------------------------------------------------------------
+// SandwichMode — selects the wire-selection strategy used when building the
+// CNOT chain:
+//
+//   Safe   — chain wires are drawn exclusively from extra_ancilla (all
+//             zero-initialized), so every CNOT in the chain is a no-op and
+//             functional equivalence is guaranteed by construction.
+//
+//   Active — (reserved for ticket 0009) chain wires are drawn from a mix of
+//             ancilla and live circuit wires; cancellation of the forward /
+//             reversed chain preserves the overall truth-table.
+// ---------------------------------------------------------------------------
+enum class SandwichMode { Safe, Active };
+
+// ---------------------------------------------------------------------------
 // apply_sandwich — CNOT chain sandwich around the entire circuit
 //
 // Wire budget contract (from ticket 0004):
@@ -26,4 +40,5 @@
 void apply_sandwich(Circuit& circuit,
                     const std::vector<int>& extra_ancilla,
                     int chain_len,
+                    SandwichMode mode,
                     std::mt19937& rng);

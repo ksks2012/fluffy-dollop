@@ -174,7 +174,7 @@ static void test_shuffle_ancilla_invariant_plain() {
 static void test_shuffle_after_sandwich_truth_table() {
     auto adder = make_2bit_adder();
     std::mt19937 rng(42);
-    apply_sandwich(adder, {9, 10, 11, 12}, 8, rng);
+    apply_sandwich(adder, {9, 10, 11, 12}, 8, SandwichMode::Safe, rng);
     shuffle_depth_levels(adder, rng);
     CHECK(adder_truth_table_errors(adder) == 0);
 }
@@ -182,7 +182,7 @@ static void test_shuffle_after_sandwich_truth_table() {
 static void test_shuffle_after_sandwich_ancilla_invariant() {
     auto adder = make_2bit_adder();
     std::mt19937 rng(42);
-    apply_sandwich(adder, {9, 10, 11, 12}, 8, rng);
+    apply_sandwich(adder, {9, 10, 11, 12}, 8, SandwichMode::Safe, rng);
     shuffle_depth_levels(adder, rng);
     CHECK(ancilla_violations(adder) == 0);
 }
@@ -193,7 +193,7 @@ static void test_shuffle_after_sandwich_ancilla_invariant() {
 static void test_shuffle_after_sandwich_depth_distribution() {
     auto adder = make_2bit_adder();
     std::mt19937 rng(7);
-    apply_sandwich(adder, {9, 10, 11, 12}, 6, rng);
+    apply_sandwich(adder, {9, 10, 11, 12}, 6, SandwichMode::Safe, rng);
 
     auto d_before = adder.compute_depth_levels();
     std::sort(d_before.begin(), d_before.end());

@@ -6,7 +6,9 @@
 void apply_sandwich(Circuit& circuit,
                     const std::vector<int>& extra_ancilla,
                     int chain_len,
+                    SandwichMode mode,
                     std::mt19937& rng) {
+    (void)mode;  // Safe behaviour is the only implemented mode; Active reserved for ticket 0009
     if (extra_ancilla.size() < 2)
         throw std::invalid_argument("apply_sandwich: need >= 2 extra ancilla wires");
     if (chain_len < 1)

@@ -25,7 +25,7 @@ static void test_sandwich_gate_count() {
     auto adder = make_2bit_adder();
     const int before = adder.gate_count();  // 15
     std::mt19937 rng(42);
-    apply_sandwich(adder, {9, 10, 11, 12}, chain_len, rng);
+    apply_sandwich(adder, {9, 10, 11, 12}, chain_len, SandwichMode::Safe, rng);
     CHECK(adder.gate_count() == before + 2 * chain_len);
 }
 
@@ -36,7 +36,7 @@ static void test_sandwich_extends_wire_count() {
     auto adder = make_2bit_adder();
     CHECK(adder.num_wires() == 9);  // adder: wires 0-8
     std::mt19937 rng(42);
-    apply_sandwich(adder, {9, 10, 11}, 4, rng);
+    apply_sandwich(adder, {9, 10, 11}, 4, SandwichMode::Safe, rng);
     CHECK(adder.num_wires() == 12);  // now covers wires 0-11
 }
 
@@ -55,7 +55,7 @@ static void test_sandwich_chain_structure() {
     const int orig = 15;  // 2-bit adder
     auto adder = make_2bit_adder();
     std::mt19937 rng(7);
-    apply_sandwich(adder, {9, 10, 11}, chain_len, rng);
+    apply_sandwich(adder, {9, 10, 11}, chain_len, SandwichMode::Safe, rng);
 
     const auto& gs = adder.gates_ref();
     const int n = static_cast<int>(gs.size());
@@ -90,8 +90,8 @@ static void test_sandwich_chain_structure() {
 static void test_sandwich_deterministic() {
     auto a1 = make_2bit_adder(), a2 = make_2bit_adder();
     std::mt19937 r1(99), r2(99);
-    apply_sandwich(a1, {9, 10, 11, 12}, 8, r1);
-    apply_sandwich(a2, {9, 10, 11, 12}, 8, r2);
+    apply_sandwich(a1, {9, 10, 11, 12}, 8, SandwichMode::Safe, r1);
+    apply_sandwich(a2, {9, 10, 11, 12}, 8, SandwichMode::Safe, r2);
 
     const auto& g1 = a1.gates_ref();
     const auto& g2 = a2.gates_ref();
@@ -106,7 +106,7 @@ static void test_sandwich_deterministic() {
 static void test_sandwich_truth_table() {
     auto adder = make_2bit_adder();
     std::mt19937 rng(42);
-    apply_sandwich(adder, {9, 10, 11, 12}, 8, rng);
+    apply_sandwich(adder, {9, 10, 11, 12}, 8, SandwichMode::Safe, rng);
 
     int mismatches = 0;
     for (int bits = 0; bits < 32; ++bits) {
@@ -138,7 +138,7 @@ static void test_sandwich_ancilla_invariant() {
     auto adder = make_2bit_adder();
     std::mt19937 rng(42);
     const std::vector<int> extra = {9, 10, 11, 12};
-    apply_sandwich(adder, extra, 8, rng);
+    apply_sandwich(adder, extra, 8, SandwichMode::Safe, rng);
 
     // Build set of output wire indices for exclusion
     const auto& outs = adder.output_wires();
@@ -172,8 +172,8 @@ static void test_sandwich_stacked() {
     auto adder = make_2bit_adder();
     const int orig = adder.gate_count();
     std::mt19937 rng(55);
-    apply_sandwich(adder, {9, 10, 11},  4, rng);  // +8
-    apply_sandwich(adder, {12, 13, 14}, 3, rng);  // +6
+    apply_sandwich(adder, {9, 10, 11},  4, SandwichMode::Safe, rng);  // +8
+    apply_sandwich(adder, {12, 13, 14}, 3, SandwichMode::Safe, rng);  // +6
     CHECK(adder.gate_count() == orig + 8 + 6);
 
     // Truth table still correct after two sandwiches
