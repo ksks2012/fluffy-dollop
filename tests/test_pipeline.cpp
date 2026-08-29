@@ -46,7 +46,7 @@ static void test_pipeline_gate_count_sandwich() {
     // sandwich adds 2 * chain_len gates
     auto cfg = default_cfg();
     auto r = run_full_pipeline(cfg);
-    CHECK(r.phases[1].gate_count == 15 + 2 * cfg.sandwich_chain_len);
+    CHECK(r.phases[1].gate_count == 15 + 2 * cfg.sandwich_chain_length);
 }
 
 static void test_pipeline_gate_count_shuffle_unchanged() {
@@ -188,6 +188,50 @@ static void test_pipeline_different_seeds() {
 }
 
 // ---------------------------------------------------------------------------
+// Ticket 0010: default sandwich_mode is Active
+// ---------------------------------------------------------------------------
+static void test_pipeline_default_mode_is_active() {
+    PipelineConfig cfg;
+    CHECK(cfg.sandwich_mode == SandwichMode::Active);
+}
+
+// ---------------------------------------------------------------------------
+// Ticket 0010: end-to-end pipeline with Active mode passes truth table
+// ---------------------------------------------------------------------------
+static void test_pipeline_active_mode_truth_table() {
+    PipelineConfig cfg;
+    // default cfg already has sandwich_mode=Active
+    auto r = run_full_pipeline(cfg);
+    CHECK(check_truth_table(r.circuit));
+}
+
+// ---------------------------------------------------------------------------
+// Ticket 0010: end-to-end pipeline with Active mode passes ancilla invariant
+// ---------------------------------------------------------------------------
+static void test_pipeline_active_mode_ancilla_invariant() {
+    PipelineConfig cfg;
+    auto r = run_full_pipeline(cfg);
+    for (const auto& p : r.phases)
+        CHECK(p.ancilla_ok);
+}
+
+// ---------------------------------------------------------------------------
+// Ticket 0010: --no-sandwich (enable_sandwich=false) takes precedence over
+// sandwich_mode — phase is skipped regardless of mode setting
+// ---------------------------------------------------------------------------
+static void test_pipeline_no_sandwich_beats_mode() {
+    PipelineConfig cfg;
+    cfg.enable_sandwich = false;
+    cfg.sandwich_mode   = SandwichMode::Active;
+    auto r = run_full_pipeline(cfg);
+    // adder + shuffle + inject = 3; no sandwich phase entry
+    CHECK(r.phases.size() == 3);
+    CHECK(r.phases[0].name == "adder");
+    CHECK(r.phases[1].name == "shuffle");
+    CHECK(check_truth_table(r.circuit));
+}
+
+// ---------------------------------------------------------------------------
 int main() {
     test_pipeline_phase_count_full();
     test_pipeline_phase_names();
@@ -206,6 +250,10 @@ int main() {
     test_pipeline_no_inject();
     test_pipeline_adder_only();
     test_pipeline_different_seeds();
+    test_pipeline_default_mode_is_active();
+    test_pipeline_active_mode_truth_table();
+    test_pipeline_active_mode_ancilla_invariant();
+    test_pipeline_no_sandwich_beats_mode();
 
     if (s_failed == 0)
         std::cout << "All " << s_run << " tests passed.\n";

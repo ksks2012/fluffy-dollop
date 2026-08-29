@@ -35,6 +35,14 @@ int main(int argc, char* argv[]) {
         if      (arg == "--no-sandwich") cfg.enable_sandwich = false;
         else if (arg == "--no-shuffle")  cfg.enable_shuffle  = false;
         else if (arg == "--no-inject")   cfg.enable_inject   = false;
+        else if (arg.substr(0, 17) == "--sandwich-mode=") {
+            std::string m = arg.substr(17);
+            if      (m == "active") cfg.sandwich_mode = SandwichMode::Active;
+            else if (m == "safe")   cfg.sandwich_mode = SandwichMode::Safe;
+            // else: unrecognised value ignored; default (Active) kept
+        }
+        // --no-sandwich takes precedence: enable_sandwich=false skips the phase
+        // regardless of --sandwich-mode, so no special precedence logic needed here.
     }
 
     std::cout << "Seed: " << cfg.seed << "\n";
@@ -42,7 +50,11 @@ int main(int argc, char* argv[]) {
               << (cfg.enable_sandwich ? " sandwich" : "")
               << (cfg.enable_shuffle  ? " shuffle"  : "")
               << (cfg.enable_inject   ? " inject"   : "")
-              << "\n\n";
+              << "\n";
+    if (cfg.enable_sandwich)
+        std::cout << "Sandwich mode: "
+                  << (cfg.sandwich_mode == SandwichMode::Active ? "active" : "safe")
+                  << "\n";
 
     std::cout << "  Phase         Gates   Wires   Overhead   Ancilla\n";
     std::cout << "  ------------  ------  ------  ---------  -------\n";

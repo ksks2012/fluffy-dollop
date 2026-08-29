@@ -3,6 +3,7 @@
 #include <string>
 #include <vector>
 #include "circuit.hpp"
+#include "sandwich.hpp"
 
 // ---------------------------------------------------------------------------
 // PipelineConfig — controls which phases run and their parameters.
@@ -12,9 +13,10 @@ struct PipelineConfig {
     int seed = 42;
 
     // Phase 1 — sandwich
-    bool enable_sandwich      = true;
-    std::vector<int> sandwich_ancilla   = {9, 10, 11, 12};
-    int  sandwich_chain_len   = 8;
+    bool enable_sandwich             = true;
+    SandwichMode sandwich_mode       = SandwichMode::Active;
+    std::vector<int> sandwich_ancilla = {9, 10, 11, 12};  // used only when mode=Safe
+    int  sandwich_chain_length       = 8;
 
     // Phase 2 — shuffle
     bool enable_shuffle       = true;

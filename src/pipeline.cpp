@@ -59,7 +59,8 @@ PipelineResult run_full_pipeline(const PipelineConfig& cfg) {
 
     // Phase 1 — sandwich
     if (cfg.enable_sandwich) {
-        apply_sandwich(circuit, cfg.sandwich_ancilla, cfg.sandwich_chain_len, SandwichMode::Safe, rng);
+        apply_sandwich(circuit, cfg.sandwich_ancilla, cfg.sandwich_chain_length,
+                       cfg.sandwich_mode, rng);
         phases.push_back({
             "sandwich",
             circuit.gate_count(),
