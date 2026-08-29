@@ -46,22 +46,28 @@ Requires CMake ≥ 3.16 and a C++17 compiler.
 ## Running
 
 ```bash
-./build/gate_driver                 # full pipeline
-./build/gate_driver --no-sandwich   # skip sandwiching
-./build/gate_driver --no-shuffle    # skip shuffling
-./build/gate_driver --no-inject     # skip junk injection
+./build/gate_driver                          # full pipeline (Active sandwich, default)
+./build/gate_driver --sandwich-mode=safe     # use Safe (no-op ancilla) sandwich
+./build/gate_driver --sandwich-mode=active   # explicitly request Active sandwich
+./build/gate_driver --no-sandwich            # skip sandwiching entirely
+./build/gate_driver --no-shuffle             # skip shuffling
+./build/gate_driver --no-inject              # skip junk injection
 ```
 
-Example output (seed 42):
+`--no-sandwich` takes precedence over `--sandwich-mode`: specifying both skips the phase entirely.
+
+Example output (seed 42, Active mode — default):
 
 ```
   adder       gates=15    wires=9    overhead=1.00x  ancilla=OK
-  sandwich    gates=31    wires=13   overhead=2.07x  ancilla=OK
-  shuffle     gates=31    wires=13   overhead=2.07x  ancilla=OK
+  sandwich    gates=31    wires=9    overhead=2.07x  ancilla=OK
+  shuffle     gates=31    wires=9    overhead=2.07x  ancilla=OK
   inject      gates=43    wires=16   overhead=2.87x  ancilla=OK
 
 Final truth-table: PASS (all 32 inputs correct)
 ```
+
+Active mode leaves the wire count at 9 after sandwiching (no extra ancilla allocated) because it draws chain wires from the circuit's existing input and output wires rather than zero-initialized extras.
 
 ## Running Tests
 

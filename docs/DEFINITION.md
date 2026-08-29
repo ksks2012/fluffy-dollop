@@ -44,7 +44,13 @@ A single-wire reversible gate that flips its input. Self-inverse.
 
 ### Slice Gate
 A gate (or short chain of gates) inserted during the **sandwiching** step to scramble intermediate wire values.  
-In this MVP, slice gates are random CNOT chains.
+In this MVP, slice gates are random CNOT chains.  
+The chain's wire-selection strategy is governed by `SandwichMode`:
+
+- **Safe mode** — control/target wires are drawn exclusively from zero-initialized ancilla wires (`extra_ancilla`).  Every chain gate evaluates as a no-op, so functional equivalence is trivially preserved.  Used for isolated testing of later phases (shuffle, junk injection) where the sandwich must not alter observable wire values.
+- **Active mode** *(default)* — control wires are drawn from the circuit's primary input wires (read-only throughout the adder); target wires are drawn from the circuit's primary output wires (write-from-zero on each evaluation).  The `F⁻¹ ∘ Adder ∘ F` structure guarantees truth-table preservation while producing real mixing of intermediate values: output wires briefly carry `input_value XOR adder_partial_result` during execution.
+
+See also: `docs/adr/0002-active-sandwiching-mode.md`.
 
 ### Junk Gate
 A redundant gate that does not change the observable input-output behavior of the circuit.  
