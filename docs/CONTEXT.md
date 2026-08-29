@@ -96,4 +96,16 @@ The 2-bit circuit is used solely to validate correctness of the pipeline and the
 
 ---
 
-## 5. File Structure (Planned)
+## 5. Documentation Structure
+
+| Path | Purpose |
+|------|---------|
+| `docs/CONTEXT.md` | Single source of truth (this file) — current system state, decisions, coding standards |
+| `docs/DEFINITION.md` | Domain glossary (Local Mixing, Reversible Circuit, Ancilla Wire, Sandwiching, Shuffling, Junk Gate, Overhead Ratio, …) |
+| `docs/CHANGELOG.md` | Milestone/version history |
+| `docs/DOCUMENTATION-LIFECYCLE.md` | Documentation management conventions |
+| `docs/adr/` | Architecture Decision Records (accepted; superseded ones remain archived) |
+| `docs/archive/tickets/` | Archived completed tickets (historical rationale only) |
+| `docs/summary/` | Execution summaries per milestone |
+
+Durable knowledge is distilled into `CONTEXT.md` / `DEFINITION.md`; raw tickets are archived to `docs/archive/tickets/` after merge.

@@ -4,7 +4,7 @@
 
 **Blocked by:** 0008
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [ ] Active mode draws control/target wires from all current wires `[0, num_wires())` with `ctrl != tgt`
 - [ ] Active mode does NOT call `extend_wires` and ignores the `extra_ancilla` argument (empty/invalid indices tolerated without error)

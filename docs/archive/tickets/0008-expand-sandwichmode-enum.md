@@ -4,7 +4,7 @@
 
 **Blocked by:** None — can start immediately.
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [ ] `enum class SandwichMode { Safe, Active }` declared co-located with `apply_sandwich`
 - [ ] `apply_sandwich` signature extended to accept a `SandwichMode mode` parameter (in-place `Circuit&` semantics preserved). Target signature — **no default value** so the compiler forces every call site to be updated:

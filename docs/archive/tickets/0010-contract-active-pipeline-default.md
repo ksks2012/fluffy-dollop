@@ -4,7 +4,7 @@
 
 **Blocked by:** 0009
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [ ] `PipelineConfig` exposes `SandwichMode sandwich_mode = SandwichMode::Active;` and `int sandwich_chain_length = 8;` (retain `sandwich_ancilla` for Safe)
 - [ ] `pipeline.cpp` / `main.cpp` consume `cfg.sandwich_mode` (forward, never interpret)

@@ -4,7 +4,7 @@
 
 **Blocked by:** 0010
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [ ] `DEFINITION.md` — clarify the Sandwiching entry (Safe vs Active distinction)
 - [ ] `CONTEXT.md` — Phase 2 sandwiching description mentions both modes and the Active default
