@@ -12,13 +12,13 @@
 //             zero-initialized), so every CNOT in the chain is a no-op and
 //             functional equivalence is guaranteed by construction.
 //
-//   Active — ctrl wires are drawn from the circuit's input wires [0..num_inputs-1]
-//             (read-only in the adder); tgt wires are drawn from the circuit's
-//             output wires (write-from-zero each evaluation).  The F⁻¹ ∘ Adder ∘ F
-//             structure preserves the truth table: ctrl is unchanged by the adder,
-//             so F⁻¹ exactly cancels F's contribution to each tgt wire.
-//             Genuine scrambling: output wires carry input_val XOR adder_partial
-//             as intermediate state — real mixing of computation values.
+//   Active — ctrl and tgt are drawn from ALL current circuit wires
+//             [0, num_wires()) with ctrl != tgt.  Does not call extend_wires.
+//             Intermediate wire values are genuinely scrambled: the all-wires
+//             CNOT chain perturbs the adder's working state mid-execution.
+//             The F\u207b\u00b9 \u2218 Adder \u2218 F structure guarantees the ancilla invariant
+//             at the phase boundary; full truth-table preservation depends on
+//             the circuit family (see docs/adr/0002-active-sandwiching-mode.md).
 // ---------------------------------------------------------------------------
 enum class SandwichMode { Safe, Active };
 

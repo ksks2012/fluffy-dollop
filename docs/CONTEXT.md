@@ -45,7 +45,7 @@ The 2-bit circuit is used solely to validate correctness of the pipeline and the
 - Insert random CNOT chains (slice gates) before and after critical sections.  Applying the same pairs in reverse order after the circuit forms the `F⁻¹ ∘ Adder ∘ F` structure that guarantees functional equivalence.
 - Two wire-selection modes are supported (see `SandwichMode` in `sandwich.hpp` and `docs/adr/0002-active-sandwiching-mode.md`):
   - **Safe mode** — wires drawn from zero-initialized extra ancilla only; every chain gate is a no-op. Useful for isolated testing of downstream phases.
-  - **Active mode** *(pipeline default)* — control wires from primary inputs, target wires from primary outputs.  Intermediate output wires carry `input_value XOR adder_partial_result`, providing genuine value-level mixing while preserving the 32-input truth table and the zero-ancilla invariant at every phase boundary.
+  - **Active mode** *(pipeline default)* — control and target wires drawn from **all** current circuit wires `[0, num_wires())` with `ctrl ≠ tgt`.  The chain does not extend the wire count.  Intermediate wire values are genuinely scrambled during execution; the `F⁻¹ ∘ Adder ∘ F` structure preserves the zero-ancilla invariant at every phase boundary.
 - `PipelineConfig::sandwich_mode` defaults to `SandwichMode::Active`; pass `--sandwich-mode=safe` on the CLI to switch.
 
 ### Phase 3: Mixing (Simplified)

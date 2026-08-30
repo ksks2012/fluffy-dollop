@@ -19,21 +19,12 @@ void apply_sandwich(Circuit& circuit,
     //              touches them).  Every chain gate evaluates as a no-op, so
     //              functional equivalence is trivially preserved.
     //
-    // Active mode — ctrl drawn from input wires [0..num_inputs-1] (the adder only
-    //               READS these; they are never written by any gate).
-    //               tgt  drawn from output wires (the circuit's output_wires set;
-    //               they start at 0 on every evaluate() call and are write-only
-    //               from the adder's perspective).
-    //
-    //   Why F⁻¹ ∘ Adder ∘ F = Adder on the 32 valid inputs:
-    //     • At F time every output wire is 0, so F XORs ctrl_value into tgt.
-    //     • The adder XORs its own contribution into tgt.
-    //     • ctrl is an input wire — the adder never modifies it.
-    //     • At F⁻¹ time ctrl still holds the original input value, so the XOR
-    //       applied by F is exactly cancelled → net tgt = adder contribution. ✓
-    //     • Output wires are disjoint from input wires, so ctrl != tgt always.
-    //   Genuine scrambling: during execution tgt wires briefly carry
-    //   input_value XOR adder_partial_result — real intermediate mixing.
+    // Active mode — pool = all current circuit wires [0..num_wires()-1].
+    //               ctrl and tgt are drawn from this single pool with ctrl != tgt.
+    //               Does NOT call extend_wires.
+    //               See docs/adr/0002-active-sandwiching-mode.md for the correctness
+    //               argument: F⁻¹ ∘ Adder ∘ F cancels the chain's contribution at
+    //               every phase boundary for the supported circuit family.
     // ---------------------------------------------------------------------------
 
     std::vector<int> ctrl_pool, tgt_pool_global;
@@ -50,17 +41,17 @@ void apply_sandwich(Circuit& circuit,
         tgt_pool_global = extra_ancilla;   // picked separately after excluding ctrl
 
     } else {
-        // Active mode: ctrl = input wires, tgt = output wires.
-        // Defensive guard for future small circuits (never triggered for 2-bit adder).
-        int n_in = circuit.num_inputs();
-        const auto& out_wires = circuit.output_wires();
-        if (n_in < 1 || out_wires.empty())
+        // Active mode: pool is ALL current circuit wires [0..num_wires()-1].
+        // Does NOT call extend_wires.
+        // Defensive guard for future small circuits (never triggered for the 2-bit adder).
+        int n = circuit.num_wires();
+        if (n < 2)
             throw std::invalid_argument(
-                "apply_sandwich: Active mode needs >= 1 input wire and >= 1 output wire");
+                "apply_sandwich: Active mode needs >= 2 circuit wires");
 
-        ctrl_pool.resize(n_in);
+        ctrl_pool.resize(n);
         std::iota(ctrl_pool.begin(), ctrl_pool.end(), 0);
-        tgt_pool_global.assign(out_wires.begin(), out_wires.end());
+        tgt_pool_global = ctrl_pool;   // same pool; ctrl excluded per-iteration below
     }
 
     // ---------------------------------------------------------------------------

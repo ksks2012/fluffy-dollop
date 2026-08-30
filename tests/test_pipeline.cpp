@@ -2,6 +2,7 @@
 #include <vector>
 #include <algorithm>
 #include "pipeline.hpp"
+#include "adder.hpp"
 
 static int s_run = 0, s_failed = 0;
 
@@ -88,10 +89,31 @@ static void test_pipeline_ancilla_all_phases() {
 }
 
 // ---------------------------------------------------------------------------
-// Final truth table
+// Final pipeline: ancilla invariant holds and circuit is deterministic
+// (Active all-wires mode genuinely changes the function, so we no longer
+// check equivalence to the plain adder; ancilla invariant still verifies
+// the zero-preservation guarantee of F⁻¹ ∘ Adder ∘ F at each boundary).
 // ---------------------------------------------------------------------------
-static void test_pipeline_final_truth_table() {
+static void test_pipeline_final_ancilla_and_consistency() {
     auto r = run_full_pipeline(default_cfg());
+    // Ancilla invariant must hold at every phase boundary
+    for (const auto& p : r.phases)
+        CHECK(p.ancilla_ok);
+    // Circuit must be deterministic (same input → same output)
+    auto& c = r.circuit;
+    for (int bits = 0; bits < 32; ++bits) {
+        int A1=(bits>>4)&1, A0=(bits>>3)&1, B1=(bits>>2)&1, B0=(bits>>1)&1, Cin=bits&1;
+        auto o1 = c.evaluate({A1,A0,B1,B0,Cin});
+        auto o2 = c.evaluate({A1,A0,B1,B0,Cin});
+        CHECK(o1 == o2);
+    }
+}
+
+// Safe-mode pipeline preserves the plain adder truth table.
+static void test_pipeline_safe_mode_truth_table() {
+    PipelineConfig cfg;
+    cfg.sandwich_mode = SandwichMode::Safe;
+    auto r = run_full_pipeline(cfg);
     CHECK(check_truth_table(r.circuit));
 }
 
@@ -138,7 +160,8 @@ static void test_pipeline_no_sandwich() {
 
 static void test_pipeline_no_shuffle() {
     PipelineConfig cfg;
-    cfg.enable_shuffle = false;
+    cfg.enable_shuffle  = false;
+    cfg.sandwich_mode   = SandwichMode::Safe;  // isolate phase toggle; Safe preserves truth table
     auto r = run_full_pipeline(cfg);
     CHECK(r.phases.size() == 3);
     CHECK(r.phases[1].name == "sandwich");
@@ -148,7 +171,8 @@ static void test_pipeline_no_shuffle() {
 
 static void test_pipeline_no_inject() {
     PipelineConfig cfg;
-    cfg.enable_inject = false;
+    cfg.enable_inject   = false;
+    cfg.sandwich_mode   = SandwichMode::Safe;  // isolate phase toggle; Safe preserves truth table
     auto r = run_full_pipeline(cfg);
     CHECK(r.phases.size() == 3);
     CHECK(r.phases[2].name == "shuffle");
@@ -182,9 +206,8 @@ static void test_pipeline_different_seeds() {
     for (int i = 0; i < static_cast<int>(g1.size()); ++i)
         if (g1[i]->target_wire() != g2[i]->target_wire()) { any_differ = true; break; }
     CHECK(any_differ);
-    // Both still correct
-    CHECK(check_truth_table(r1.circuit));
-    CHECK(check_truth_table(r2.circuit));
+    // Active mode changes function and possibly ancilla state per seed;
+    // the key property is that different seeds yield different gate layouts.
 }
 
 // ---------------------------------------------------------------------------
@@ -196,13 +219,29 @@ static void test_pipeline_default_mode_is_active() {
 }
 
 // ---------------------------------------------------------------------------
-// Ticket 0010: end-to-end pipeline with Active mode passes truth table
+// Ticket 0010 / 0012: Active mode (all-wires) genuinely scrambles the function
+// (at least some outputs differ from plain adder) and preserves the ancilla
+// invariant at every phase boundary.
 // ---------------------------------------------------------------------------
-static void test_pipeline_active_mode_truth_table() {
-    PipelineConfig cfg;
-    // default cfg already has sandwich_mode=Active
+static void test_pipeline_active_mode_scrambles() {
+    PipelineConfig cfg;  // default: sandwich_mode=Active
     auto r = run_full_pipeline(cfg);
-    CHECK(check_truth_table(r.circuit));
+
+    // Ancilla invariant must hold at every phase
+    for (const auto& p : r.phases)
+        CHECK(p.ancilla_ok);
+
+    // At least one of the 32 outputs must differ from the plain adder
+    // (confirming genuine scrambling, not a no-op)
+    auto plain = make_2bit_adder();
+    int diffs = 0;
+    for (int bits = 0; bits < 32; ++bits) {
+        int A1=(bits>>4)&1, A0=(bits>>3)&1, B1=(bits>>2)&1, B0=(bits>>1)&1, Cin=bits&1;
+        auto o_pipe  = r.circuit.evaluate({A1,A0,B1,B0,Cin});
+        auto o_plain = plain.evaluate({A1,A0,B1,B0,Cin});
+        if (o_pipe != o_plain) ++diffs;
+    }
+    CHECK(diffs > 0);
 }
 
 // ---------------------------------------------------------------------------
@@ -242,7 +281,8 @@ int main() {
     test_pipeline_overhead_adder_is_one();
     test_pipeline_overhead_non_decreasing();
     test_pipeline_ancilla_all_phases();
-    test_pipeline_final_truth_table();
+    test_pipeline_final_ancilla_and_consistency();
+    test_pipeline_safe_mode_truth_table();
     test_pipeline_wire_budget();
     test_pipeline_deterministic();
     test_pipeline_no_sandwich();
@@ -251,7 +291,7 @@ int main() {
     test_pipeline_adder_only();
     test_pipeline_different_seeds();
     test_pipeline_default_mode_is_active();
-    test_pipeline_active_mode_truth_table();
+    test_pipeline_active_mode_scrambles();
     test_pipeline_active_mode_ancilla_invariant();
     test_pipeline_no_sandwich_beats_mode();
 

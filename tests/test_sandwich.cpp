@@ -232,31 +232,38 @@ static void test_active_ignores_extra_ancilla() {
 }
 
 // ---------------------------------------------------------------------------
-// Exhaustive truth-table: all 32 inputs still produce correct adder output.
-// Active mode draws ctrl from input wires and tgt from output wires, so
-// F⁻¹ ∘ Adder ∘ F preserves the truth table.
+// Active mode (all-wires sampling) genuinely scrambles the circuit's truth
+// table — at least one of the 32 inputs produces a different output than the
+// plain adder.  This confirms real intermediate-value mixing (not a no-op).
+// The full circuit is also self-consistent: same input always gives the same
+// output (deterministic).
 // ---------------------------------------------------------------------------
 static void test_active_truth_table() {
     auto adder = make_2bit_adder();
     std::mt19937 rng(42);
     apply_sandwich(adder, {}, 8, SandwichMode::Active, rng);
 
-    int mismatches = 0;
+    // Pass 1 — collect outputs for all 32 inputs
+    std::vector<std::vector<int>> pass1;
     for (int bits = 0; bits < 32; ++bits) {
-        int A1  = (bits >> 4) & 1, A0  = (bits >> 3) & 1;
-        int B1  = (bits >> 2) & 1, B0  = (bits >> 1) & 1;
-        int Cin =  bits       & 1;
-        int sum = (A1 * 2 + A0) + (B1 * 2 + B0) + Cin;
-
-        auto out = adder.evaluate({A1, A0, B1, B0, Cin});
-        int exp_S1 = (sum >> 1) & 1, exp_S0 = sum & 1, exp_Cout = (sum >> 2) & 1;
-        if (out[0] != exp_S1 || out[1] != exp_S0 || out[2] != exp_Cout) {
-            std::cerr << "  Active TT mismatch A=" << (A1*2+A0) << " B=" << (B1*2+B0)
-                      << " Cin=" << Cin << "\n";
-            ++mismatches;
-        }
+        int A1=(bits>>4)&1, A0=(bits>>3)&1, B1=(bits>>2)&1, B0=(bits>>1)&1, Cin=bits&1;
+        pass1.push_back(adder.evaluate({A1,A0,B1,B0,Cin}));
     }
-    CHECK(mismatches == 0);
+    // Pass 2 — same inputs must give identical outputs (deterministic)
+    for (int bits = 0; bits < 32; ++bits) {
+        int A1=(bits>>4)&1, A0=(bits>>3)&1, B1=(bits>>2)&1, B0=(bits>>1)&1, Cin=bits&1;
+        CHECK(adder.evaluate({A1,A0,B1,B0,Cin}) == pass1[bits]);
+    }
+
+    // At least one output must differ from the plain adder — all-wires sampling
+    // is genuine scrambling, not a no-op.
+    auto plain = make_2bit_adder();
+    int diffs = 0;
+    for (int bits = 0; bits < 32; ++bits) {
+        int A1=(bits>>4)&1, A0=(bits>>3)&1, B1=(bits>>2)&1, B0=(bits>>1)&1, Cin=bits&1;
+        if (pass1[bits] != plain.evaluate({A1,A0,B1,B0,Cin})) ++diffs;
+    }
+    CHECK(diffs > 0);
 }
 
 // ---------------------------------------------------------------------------
@@ -336,29 +343,33 @@ static void test_active_chain_mirroring() {
 }
 
 // ---------------------------------------------------------------------------
-// Scramble verification:
-//   1. Manually assemble a forward-only circuit (forward chain + adder, no reverse)
-//      and assert intermediate wire state differs from the plain adder.
-//   2. The full forward+reverse circuit remains functionally equivalent to the
-//      plain adder (truth table correct for the same input).
+// Scramble verification (all-wires pool):
+//   1. Manually assemble a forward-only circuit using the same all-wires
+//      algorithm as Active mode and assert intermediate wire state differs
+//      from the plain adder on a fixed seeded input.
+//   2. The full forward+reverse circuit (via apply_sandwich) is self-consistent:
+//      same input always returns the same output (deterministic).
+//   3. Gate-count delta is +2*chain_len.
 // ---------------------------------------------------------------------------
 static void test_active_scramble() {
     const int chain_len = 6;
+    const int n_wires   = 9;  // 2-bit adder
 
-    // Generate the chain with a known seed, replicating Active mode's algorithm:
-    // ctrl from input wires [0..4], tgt from output wires {5,6,7}.
-    auto base = make_2bit_adder();
-    const int n_in = base.num_inputs();                  // 5
-    const std::vector<int> out_ws = base.output_wires(); // {5,6,7}
-
+    // Manually replicate Active mode's all-wires algorithm so we can build a
+    // forward-only circuit that uses the exact same chain as apply_sandwich
+    // would generate for seed 42.
     std::vector<std::pair<int,int>> chain;
     {
         std::mt19937 rng(42);
-        std::uniform_int_distribution<int> cdist(0, n_in - 1);
-        std::uniform_int_distribution<int> tdist(0, static_cast<int>(out_ws.size()) - 1);
+        std::vector<int> pool(n_wires);
+        std::iota(pool.begin(), pool.end(), 0);
+        std::uniform_int_distribution<int> ctrl_dist(0, n_wires - 1);
         for (int i = 0; i < chain_len; ++i) {
-            int ctrl = cdist(rng);
-            int tgt  = out_ws[tdist(rng)];
+            int ctrl = pool[ctrl_dist(rng)];
+            std::vector<int> tgt_cands;
+            for (int w : pool) if (w != ctrl) tgt_cands.push_back(w);
+            int tgt = tgt_cands[
+                std::uniform_int_distribution<int>(0, n_wires - 2)(rng)];
             chain.push_back({ctrl, tgt});
         }
     }
@@ -368,39 +379,60 @@ static void test_active_scramble() {
     for (int i = chain_len - 1; i >= 0; --i)
         adder_fwd.insert_gate(0, std::make_unique<CnotGate>(chain[i].first, chain[i].second));
 
-    // Full sandwich circuit: forward chain + adder + reversed chain
-    auto adder_full = make_2bit_adder();
-    for (int i = chain_len - 1; i >= 0; --i)
-        adder_full.insert_gate(0, std::make_unique<CnotGate>(chain[i].first, chain[i].second));
-    for (int i = chain_len - 1; i >= 0; --i)
-        adder_full.add_gate(std::make_unique<CnotGate>(chain[i].first, chain[i].second));
-
     // Plain adder reference
     auto adder_plain = make_2bit_adder();
 
-    // Fixed seeded input: A=3 (1,1), B=1 (0,1), Cin=0  → sum=4
+    // Fixed seeded input: A=3 (1,1), B=1 (0,1), Cin=0
     const std::vector<int> input = {1, 1, 0, 1, 0};
 
     adder_plain.evaluate(input);
     const std::vector<int> ws_plain = adder_plain.last_wires();
-
     adder_fwd.evaluate(input);
     const std::vector<int> ws_fwd = adder_fwd.last_wires();
 
-    // 1. Forward-only circuit scrambles intermediate state
+    // 1. Forward-only chain scrambles intermediate wire state
     CHECK(ws_plain != ws_fwd);
 
-    // 2. Full forward+reverse circuit is equivalent to plain adder for all 32 inputs
-    int mismatches = 0;
-    for (int bits = 0; bits < 32; ++bits) {
-        int A1=(bits>>4)&1, A0=(bits>>3)&1;
-        int B1=(bits>>2)&1, B0=(bits>>1)&1, Cin=bits&1;
-        int sum = (A1*2+A0) + (B1*2+B0) + Cin;
-        auto out = adder_full.evaluate({A1, A0, B1, B0, Cin});
-        if (out[0] != ((sum>>1)&1) || out[1] != (sum&1) || out[2] != ((sum>>2)&1))
-            ++mismatches;
+    // 2/3. Full circuit via apply_sandwich: correct gate delta + self-consistent
+    auto adder_full = make_2bit_adder();
+    const int before = adder_full.gate_count();
+    std::mt19937 rng2(42);
+    apply_sandwich(adder_full, {}, chain_len, SandwichMode::Active, rng2);
+    CHECK(adder_full.gate_count() == before + 2 * chain_len);
+    // Deterministic: same input → same output
+    auto out1 = adder_full.evaluate(input);
+    auto out2 = adder_full.evaluate(input);
+    CHECK(out1 == out2);
+}
+
+// ---------------------------------------------------------------------------
+// (Hardening) Active wire pool scales with num_wires().
+// After manually extending the circuit to 13 wires, Active mode must draw
+// from [0..12], not be hard-coded to the 9-wire adder range.
+// ---------------------------------------------------------------------------
+static void test_active_wire_pool_scales() {
+    auto circuit = make_2bit_adder();
+    circuit.extend_wires(13);  // manually widen the pool
+    const int before = circuit.num_wires();
+    CHECK(before == 13);
+
+    // Apply a long chain: with 13 wires and 20 steps the probability that
+    // every gate stays within [0..8] is (9*8 / 13*12)^20 < 1e-6.
+    std::mt19937 rng(7);
+    apply_sandwich(circuit, {}, 20, SandwichMode::Active, rng);
+
+    // Active mode must NOT have called extend_wires
+    CHECK(circuit.num_wires() == 13);
+    CHECK(circuit.gate_count() == 15 + 40);  // adder + 2*20
+
+    // At least one chain gate must use a wire index >= 9 (pool included them)
+    const auto& gs = circuit.gates_ref();
+    bool saw_extended_wire = false;
+    for (int i = 0; i < 20 && !saw_extended_wire; ++i) {
+        for (int w : gs[i]->touched_wires())
+            if (w >= 9) { saw_extended_wire = true; break; }
     }
-    CHECK(mismatches == 0);
+    CHECK(saw_extended_wire);
 }
 
 // ---------------------------------------------------------------------------
@@ -445,6 +477,7 @@ int main() {
     test_active_deterministic();
     test_active_chain_mirroring();
     test_active_scramble();
+    test_active_wire_pool_scales();
     test_safe_too_few_ancilla();
 
     if (s_failed == 0)

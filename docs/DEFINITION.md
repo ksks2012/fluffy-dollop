@@ -48,9 +48,7 @@ In this MVP, slice gates are random CNOT chains.
 The chain's wire-selection strategy is governed by `SandwichMode`:
 
 - **Safe mode** — control/target wires are drawn exclusively from zero-initialized ancilla wires (`extra_ancilla`).  Every chain gate evaluates as a no-op, so functional equivalence is trivially preserved.  Used for isolated testing of later phases (shuffle, junk injection) where the sandwich must not alter observable wire values.
-- **Active mode** *(default)* — control wires are drawn from the circuit's primary input wires (read-only throughout the adder); target wires are drawn from the circuit's primary output wires (write-from-zero on each evaluation).  The `F⁻¹ ∘ Adder ∘ F` structure guarantees truth-table preservation while producing real mixing of intermediate values: output wires briefly carry `input_value XOR adder_partial_result` during execution.
-
-See also: `docs/adr/0002-active-sandwiching-mode.md`.
+- **Active mode** *(default)* — control and target wires are drawn from **all** current circuit wires `[0, num_wires())` with `ctrl ≠ tgt` (see ADR 0002: `docs/adr/0002-active-sandwiching-mode.md`).  The chain never calls `extend_wires`.  Intermediate wire values are genuinely scrambled during execution; the ancilla invariant is preserved at the phase boundary by the `F⁻¹ ∘ Adder ∘ F` cancellation structure.
 
 ### Junk Gate
 A redundant gate that does not change the observable input-output behavior of the circuit.  
