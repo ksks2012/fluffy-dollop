@@ -15,7 +15,7 @@ struct PipelineConfig {
     // Phase 1 — sandwich
     bool enable_sandwich             = true;
     SandwichMode sandwich_mode       = SandwichMode::Active;
-    std::vector<int> sandwich_ancilla = {9, 10, 11, 12};  // used only when mode=Safe
+    std::vector<int> sandwich_ancilla = {9, 10, 11, 12};   // used only when mode=Safe; wires beyond the 9-wire 2-bit adder (Safe mode auto-extends)
     int  sandwich_chain_length       = 8;
 
     // Phase 2 — shuffle

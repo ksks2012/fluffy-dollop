@@ -44,3 +44,7 @@ add_test(NAME inject_junk COMMAND test_inject_junk)
 add_executable(test_pipeline tests/test_pipeline.cpp)
 target_link_libraries(test_pipeline PRIVATE common_lib)
 add_test(NAME pipeline COMMAND test_pipeline)
+
+add_executable(test_adder tests/test_adder.cpp)
+target_link_libraries(test_adder PRIVATE common_lib)
+add_test(NAME adder COMMAND test_adder)
