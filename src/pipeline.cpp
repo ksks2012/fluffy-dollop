@@ -62,14 +62,45 @@ bool check_ancilla_invariant(Circuit& c) {
 }
 
 // ---------------------------------------------------------------------------
+// derive_free_ancilla — wires that are: not a primary input, not a primary
+// output, and never the target of any existing gate.  These are safe to use
+// as the Safe-mode sandwich ancilla pool (CNOT chains on them are no-ops
+// because they start at 0 and the adder never writes them).
+// ---------------------------------------------------------------------------
+static std::vector<int> derive_free_ancilla(const Circuit& c) {
+    const auto& outs  = c.output_wires();
+    const auto& gates = c.gates_ref();
+    std::vector<int> free_wires;
+    for (int w = c.num_inputs(); w < c.num_wires(); ++w) {
+        bool is_out = std::find(outs.begin(), outs.end(), w) != outs.end();
+        if (is_out) continue;
+        bool is_target = false;
+        for (const auto& g : gates)
+            if (g->target_wire() == w) { is_target = true; break; }
+        if (!is_target) free_wires.push_back(w);
+    }
+    return free_wires;
+}
+
+// ---------------------------------------------------------------------------
 // run_full_pipeline
 // ---------------------------------------------------------------------------
 
 PipelineResult run_full_pipeline(const PipelineConfig& cfg) {
-    Circuit circuit = make_2bit_adder();
+    // Build the adder for the configured bit-width.
+    Circuit circuit = make_nbit_adder(cfg.n, cfg.extra_ancilla);
     std::vector<PhaseStats> phases;
     std::mt19937 rng(cfg.seed);
     const int ORIGINAL_GATES = circuit.gate_count();  // derived from factory
+
+    // Derive Safe-mode sandwich ancilla: extra zero wires never written by the
+    // adder's gates (= the extra_ancilla range [4n+1 .. 4n+extra_ancilla]).
+    const std::vector<int> safe_ancilla = derive_free_ancilla(circuit);
+
+    // Derive inject-junk pool: 3 wires immediately beyond the current circuit
+    // (inject_junk calls extend_wires internally to cover them).
+    const int inject_base = circuit.num_wires();  // 4n+1+extra_ancilla
+    const std::vector<int> inject_pool = {inject_base, inject_base+1, inject_base+2};
 
     // Phase 0 — adder (always runs)
     phases.push_back({
@@ -82,7 +113,7 @@ PipelineResult run_full_pipeline(const PipelineConfig& cfg) {
 
     // Phase 1 — sandwich
     if (cfg.enable_sandwich) {
-        apply_sandwich(circuit, cfg.sandwich_ancilla, cfg.sandwich_chain_length,
+        apply_sandwich(circuit, safe_ancilla, cfg.sandwich_chain_length,
                        cfg.sandwich_mode, rng);
         phases.push_back({
             "sandwich",
@@ -107,7 +138,7 @@ PipelineResult run_full_pipeline(const PipelineConfig& cfg) {
 
     // Phase 3 — inject junk
     if (cfg.enable_inject) {
-        inject_junk_gates(circuit, cfg.inject_ancilla, cfg.inject_count, rng);
+        inject_junk_gates(circuit, inject_pool, cfg.inject_count, rng);
         phases.push_back({
             "inject",
             circuit.gate_count(),

@@ -35,17 +35,17 @@ int main(int argc, char* argv[]) {
         if      (arg == "--no-sandwich") cfg.enable_sandwich = false;
         else if (arg == "--no-shuffle")  cfg.enable_shuffle  = false;
         else if (arg == "--no-inject")   cfg.enable_inject   = false;
-        else if (arg.substr(0, 17) == "--sandwich-mode=") {
-            std::string m = arg.substr(17);
+        else if (arg.substr(0, 16) == "--sandwich-mode=") {
+            std::string m = arg.substr(16);
             if      (m == "active") cfg.sandwich_mode = SandwichMode::Active;
             else if (m == "safe")   cfg.sandwich_mode = SandwichMode::Safe;
-            // else: unrecognised value ignored; default (Active) kept
         }
-        // --no-sandwich takes precedence: enable_sandwich=false skips the phase
-        // regardless of --sandwich-mode, so no special precedence logic needed here.
+        else if (arg.substr(0, 4) == "--n=") {
+            cfg.n = std::stoi(arg.substr(4));
+        }
     }
 
-    std::cout << "Seed: " << cfg.seed << "\n";
+    std::cout << "Seed: " << cfg.seed << "  n=" << cfg.n << "\n";
     std::cout << "Phases enabled:"
               << (cfg.enable_sandwich ? " sandwich" : "")
               << (cfg.enable_shuffle  ? " shuffle"  : "")
@@ -63,14 +63,18 @@ int main(int argc, char* argv[]) {
     for (const auto& p : result.phases) print_phase(p);
 
     bool tt_ok = check_truth_table(result.circuit);
-    std::cout << "\nFinal truth-table: " << (tt_ok ? "PASS (all 32 inputs correct)" : "FAIL") << "\n";
+    const int n_inputs = result.circuit.num_inputs();
+    const int combos   = 1 << n_inputs;
+    std::cout << "\nFinal truth-table: "
+              << (tt_ok ? "PASS" : "FAIL")
+              << " (all " << combos << " inputs checked)\n";
 
     const auto& last = result.phases.back();
     bool all_ancilla = true;
     for (const auto& p : result.phases) if (!p.ancilla_ok) { all_ancilla = false; break; }
 
     std::cout << "\nSummary:\n"
-              << "  Original gate count : 15\n"
+              << "  Original gate count : " << result.phases[0].gate_count << "\n"
               << "  Final gate count    : " << last.gate_count   << "\n"
               << "  Final wire count    : " << last.wire_count   << "\n"
               << "  Final overhead      : " << std::fixed << std::setprecision(2) << last.overhead << "x\n"

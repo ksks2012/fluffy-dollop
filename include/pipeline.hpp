@@ -12,10 +12,15 @@
 struct PipelineConfig {
     int seed = 42;
 
+    // Adder size
+    int n              = 2;   // bits per operand (default: 2-bit adder)
+    int extra_ancilla  = 4;   // extra zero-initialized wires appended after the
+                               // adder's working carries; drive Safe sandwich and
+                               // junk injection pool derivation
+
     // Phase 1 — sandwich
     bool enable_sandwich             = true;
     SandwichMode sandwich_mode       = SandwichMode::Active;
-    std::vector<int> sandwich_ancilla = {9, 10, 11, 12};   // used only when mode=Safe; wires beyond the 9-wire 2-bit adder (Safe mode auto-extends)
     int  sandwich_chain_length       = 8;
 
     // Phase 2 — shuffle
@@ -23,7 +28,6 @@ struct PipelineConfig {
 
     // Phase 3 — junk injection
     bool enable_inject        = true;
-    std::vector<int> inject_ancilla     = {13, 14, 15};
     int  inject_count         = 12;
 };
 
@@ -34,7 +38,7 @@ struct PhaseStats {
     std::string name;
     int  gate_count;
     int  wire_count;
-    double overhead;       // gate_count / original_gate_count (15 for 2-bit adder)
+    double overhead;       // gate_count / original_gate_count (adder's gate count)
     bool ancilla_ok;       // all non-output ancilla wires = 0 for all 32 inputs
 };
 

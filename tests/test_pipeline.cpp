@@ -125,12 +125,13 @@ static void test_pipeline_safe_mode_truth_table() {
 }
 
 // ---------------------------------------------------------------------------
-// Wire budget: final circuit covers wires 0..inject_ancilla.back()
+// Wire budget: final circuit covers adder wires + 3 inject wires
+// inject pool = {4n+1+extra, 4n+2+extra, 4n+3+extra}; inject_junk extends to cover them.
 // ---------------------------------------------------------------------------
 static void test_pipeline_wire_budget() {
     auto cfg = default_cfg();
-    int expected_max = *std::max_element(cfg.inject_ancilla.begin(),
-                                          cfg.inject_ancilla.end()) + 1;
+    // inject_pool starts at make_nbit_adder(n, extra).num_wires() and takes 3 wires
+    int expected_max = make_nbit_adder(cfg.n, cfg.extra_ancilla).num_wires() + 3;
     auto r = run_full_pipeline(cfg);
     CHECK(r.circuit.num_wires() == expected_max);
 }
@@ -275,6 +276,73 @@ static void test_pipeline_no_sandwich_beats_mode() {
     CHECK(check_truth_table(r.circuit));
 }
 
+// ===========================================================================
+// Ticket 0014: 4-bit pipeline tests
+// ===========================================================================
+
+static PipelineConfig make_4bit_cfg() {
+    PipelineConfig cfg;
+    cfg.n             = 4;
+    cfg.extra_ancilla = 4;
+    return cfg;
+}
+
+// Full 4-bit pipeline with Safe sandwich passes the exhaustive 512-input TT.
+static void test_pipeline_4bit_truth_table() {
+    auto cfg = make_4bit_cfg();
+    cfg.sandwich_mode = SandwichMode::Safe;  // Safe preserves truth table; Active scrambles it
+    auto r = run_full_pipeline(cfg);
+    CHECK(check_truth_table(r.circuit));
+}
+
+// Ancilla invariant at every phase boundary (Safe mode — Active is seed-dependent).
+static void test_pipeline_4bit_ancilla_invariant() {
+    auto cfg = make_4bit_cfg();
+    cfg.sandwich_mode = SandwichMode::Safe;
+    auto r = run_full_pipeline(cfg);
+    for (const auto& p : r.phases)
+        CHECK(p.ancilla_ok);
+}
+
+// Active sandwich on 4-bit genuinely scrambles outputs.
+static void test_pipeline_4bit_active_scrambles() {
+    auto r = run_full_pipeline(make_4bit_cfg());
+    auto plain = make_nbit_adder(4, 0);
+    int diffs = 0;
+    for (int bits = 0; bits < (1 << 9); ++bits) {  // 2^(2*4+1) = 512 inputs
+        std::vector<int> input(9);
+        for (int j = 0; j < 9; ++j)
+            input[j] = (bits >> (8 - j)) & 1;
+        auto o_pipe  = r.circuit.evaluate(input);
+        auto o_plain = plain.evaluate(input);
+        if (o_pipe != o_plain) ++diffs;
+    }
+    CHECK(diffs > 0);
+}
+
+// Wire budget for 4-bit: adder wires + 3 inject wires.
+static void test_pipeline_4bit_wire_budget() {
+    auto cfg = make_4bit_cfg();
+    int expected = make_nbit_adder(cfg.n, cfg.extra_ancilla).num_wires() + 3;
+    auto r = run_full_pipeline(cfg);
+    CHECK(r.circuit.num_wires() == expected);
+}
+
+// Gate count at the adder phase matches the formula 9n-3 = 33 for n=4.
+static void test_pipeline_4bit_adder_gate_count() {
+    auto r = run_full_pipeline(make_4bit_cfg());
+    CHECK(r.phases[0].gate_count == 9 * 4 - 3);
+}
+
+// Overhead baseline is the 4-bit adder's own gate count, not 15.
+static void test_pipeline_4bit_overhead_baseline() {
+    auto r = run_full_pipeline(make_4bit_cfg());
+    CHECK(r.phases[0].overhead == 1.0);
+    // all subsequent phases must have overhead >= 1
+    for (const auto& p : r.phases)
+        CHECK(p.overhead >= 1.0);
+}
+
 // ---------------------------------------------------------------------------
 int main() {
     test_pipeline_phase_count_full();
@@ -299,6 +367,14 @@ int main() {
     test_pipeline_active_mode_scrambles();
     test_pipeline_active_mode_ancilla_invariant();
     test_pipeline_no_sandwich_beats_mode();
+
+    // 4-bit pipeline
+    test_pipeline_4bit_truth_table();
+    test_pipeline_4bit_ancilla_invariant();
+    test_pipeline_4bit_active_scrambles();
+    test_pipeline_4bit_wire_budget();
+    test_pipeline_4bit_adder_gate_count();
+    test_pipeline_4bit_overhead_baseline();
 
     if (s_failed == 0)
         std::cout << "All " << s_run << " tests passed.\n";
