@@ -30,6 +30,8 @@ int main(int argc, char* argv[]) {
     std::cout << "\n=== Full local-mixing pipeline ===\n";
 
     PipelineConfig cfg;
+    int bits_arg = cfg.n;          // default from PipelineConfig (2)
+
     for (int i = 1; i < argc; ++i) {
         std::string arg(argv[i]);
         if      (arg == "--no-sandwich") cfg.enable_sandwich = false;
@@ -39,13 +41,28 @@ int main(int argc, char* argv[]) {
             std::string m = arg.substr(16);
             if      (m == "active") cfg.sandwich_mode = SandwichMode::Active;
             else if (m == "safe")   cfg.sandwich_mode = SandwichMode::Safe;
+            // else: unrecognised value ignored; default (Active) kept
         }
-        else if (arg.substr(0, 4) == "--n=") {
-            cfg.n = std::stoi(arg.substr(4));
+        else if (arg.substr(0, 7) == "--bits=") {
+            bits_arg = std::stoi(arg.substr(7));
         }
+        else if (arg.substr(0, 16) == "--extra-ancilla=") {
+            cfg.extra_ancilla = std::stoi(arg.substr(16));
+        }
+        // --no-sandwich takes precedence over --sandwich-mode
     }
 
-    std::cout << "Seed: " << cfg.seed << "  n=" << cfg.n << "\n";
+    // Validate --bits: only 2 and 4 are supported in this release.
+    if (bits_arg != 2 && bits_arg != 4) {
+        std::cerr << "error: --bits=" << bits_arg
+                  << " is not supported; use 2 or 4\n";
+        return 1;
+    }
+    cfg.n = bits_arg;
+
+    std::cout << "Seed: " << cfg.seed
+              << "  bits=" << cfg.n
+              << "  extra-ancilla=" << cfg.extra_ancilla << "\n";
     std::cout << "Phases enabled:"
               << (cfg.enable_sandwich ? " sandwich" : "")
               << (cfg.enable_shuffle  ? " shuffle"  : "")
@@ -56,7 +73,25 @@ int main(int argc, char* argv[]) {
                   << (cfg.sandwich_mode == SandwichMode::Active ? "active" : "safe")
                   << "\n";
 
-    std::cout << "  Phase         Gates   Wires   Overhead   Ancilla\n";
+    // -------------------------------------------------------------------------
+    // Depth analysis on the base adder (no extra ancilla, no pipeline phases).
+    // Shows the shuffle space: gates per topological depth level.
+    // -------------------------------------------------------------------------
+    {
+        auto base = make_nbit_adder(cfg.n, 0);
+        auto depths = base.compute_depth_levels();
+        int max_d = depths.empty() ? 0 : *std::max_element(depths.begin(), depths.end());
+        std::vector<int> per_level(max_d + 1, 0);
+        for (int d : depths) per_level[d]++;
+        std::cout << "\nBase adder depth analysis (" << base.gate_count()
+                  << " gates, max depth " << max_d << "):\n";
+        for (int lvl = 1; lvl <= max_d; ++lvl)
+            if (per_level[lvl] > 0)
+                std::cout << "  depth " << std::setw(2) << lvl
+                          << " : " << std::setw(3) << per_level[lvl] << " gate(s)\n";
+    }
+
+    std::cout << "\n  Phase         Gates   Wires   Overhead   Ancilla\n";
     std::cout << "  ------------  ------  ------  ---------  -------\n";
 
     auto result = run_full_pipeline(cfg);

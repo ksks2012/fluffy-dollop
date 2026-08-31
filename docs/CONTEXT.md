@@ -23,13 +23,13 @@ Local Mixing (as defined in `definition.md`) is a paradigm that repeatedly appli
 - Advanced / nonlinear gadgetization
 - Any form of security evaluation or attack resistance measurement
 - Automatic irreversible-to-reversible conversion of arbitrary circuits
-- Circuits larger than 2-bit for the initial pipeline validation
+- Circuits larger than 4-bit for this validation step (ADR 0001 scope boundary narrowed to >4-bit; see ADR 0001 and 0002, which remain in force)
 
 **Hard constraint**  
 The transformed circuit must be functionally equivalent to the original for every possible input.
 
-**Positioning of the 2-bit adder**  
-The 2-bit circuit is used solely to validate correctness of the pipeline and the implementation of each phase. Its shallow depth means the practical mixing effect is limited; it is **not** intended as a benchmark for obfuscation strength.
+**Positioning**  
+The **4-bit ripple-carry adder** (33 gates, 21 wires, 512-input truth table) is the **primary validation circuit**: it has enough topological depth to make the shuffle phase's reordering space observable and the Active sandwich's scrambling effect non-trivial. The **2-bit adder** (15 gates, 9 wires, 32-input truth table) serves as the **fast regression baseline** and is used in isolated unit tests for each pipeline phase. Both sizes use the generic `make_nbit_adder(n)` factory (VBE-style, `n ∈ {2, 4}`) and the generalized `check_truth_table` / `check_ancilla_invariant` helpers that derive `n` from `num_inputs()`.
 
 ---
 
@@ -38,7 +38,7 @@ The 2-bit circuit is used solely to validate correctness of the pipeline and the
 ### Phase 1: Reversibility
 - Represent the circuit as a directed acyclic graph (adjacency list).
 - Use a fixed reversible gate library (Toffoli, CNOT, NOT).
-- Construct the 2-bit ripple-carry adder directly with reversible gates (primarily 2 Toffoli gates + CNOT gates) instead of performing generic irreversible-to-reversible conversion.
+- Build the n-bit ripple-carry adder via `make_nbit_adder(n, extra_ancilla)` (VBE-style: forward carry chain → sums → reverse uncompute; `n ∈ {2, 4}`).
 
 ### Phase 2: Hardening
 - Primary technique: **Sandwiching** (`apply_sandwich` in `sandwich.hpp`).
@@ -54,8 +54,9 @@ The 2-bit circuit is used solely to validate correctness of the pipeline and the
 - These operations constitute the MVP’s local, functionality-preserving transformations. They are a deliberate simplification of the full Local Mixing ideal (which includes repeated replacement of small sub-circuits by equivalent alternatives).
 
 ### Phase 4: Verification
-- Exhaustive truth-table comparison over all 2⁵ = 32 input combinations (A1, A0, B1, B0, Cin).
-- Confirm that outputs (S1, S0, Cout) are identical to the original circuit.
+- Exhaustive truth-table comparison over all `2^(2n+1)` input combinations (`n` bits per operand + Cin).
+  - 2-bit: `2^5 = 32` inputs; 4-bit: `2^9 = 512` inputs.
+- Confirm that outputs (S_{n-1}..S_0, Cout) are identical to the original circuit.
 - Record gate count before and after each phase to compute the overhead ratio.
 
 **Gadgetization** is deferred and explicitly out of scope for this MVP.
@@ -74,7 +75,7 @@ The 2-bit circuit is used solely to validate correctness of the pipeline and the
 | 6  | Junk gate strategy        | Toffoli on zero-valued ancilla      | Identity-preserving when a control is 0; harder for trivial cleanup passes to remove than plain identity pairs. Requires strict maintenance of the zero-ancilla invariant. |
 | 7  | Shuffling algorithm       | Topological depth level             | Correct by construction (same-depth gates are independent). Sufficient for a small circuit. |
 | 8  | Mixing scope              | Simplified only (shuffle + junk + sandwich) | Full generation mixing and nonlinear gadgets are out of scope; keeps MVP focused and implementable. |
-| 9  | Equivalence testing       | Exhaustive truth table (32 cases)   | Trivial runtime; gives 100 % functional correctness guarantee for the 2-bit instance. |
+| 9  | Equivalence testing       | Exhaustive truth table (`2^(2n+1)` cases)   | Trivial runtime for n≤4; gives 100 % functional correctness guarantee. Generalized checker derives n from `num_inputs()`. |
 | 10 | Ancilla management        | Pre-allocate a fixed pool of zero-initialized ancilla wires | Guarantees the zero invariant required by junk gates and hardening; exact count to be decided in implementation Spec. |
 | 11 | Randomness                | Deterministic and reproducible (`std::mt19937` or equivalent + recorded seed) | Essential for debugging and for repeating verification runs. |
 | 12 | Project structure         | `gate.*` + `circuit.*` + `main.cpp` | Separates core abstractions from the phase pipeline; sufficient for MVP. |

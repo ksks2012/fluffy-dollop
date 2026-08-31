@@ -25,7 +25,7 @@ The process of transforming a circuit so that its internal structure is difficul
 
 ### Functional Equivalence
 Two circuits produce identical outputs for every possible input combination.  
-In this MVP it is verified by exhaustive enumeration of the 2-bit adder’s 32 input patterns.
+In this MVP it is verified by exhaustive enumeration over all `2^(2n+1)` inputs for an n-bit adder (32 for n=2; 512 for n=4), using the generalized `check_truth_table` helper that derives `n` from `circuit.num_inputs()`.
 
 ---
 
@@ -78,7 +78,9 @@ The “local” in Local Mixing refers to operating on these limited regions rat
 
 ### Ripple-Carry Adder
 A binary adder in which the carry-out of each bit position becomes the carry-in of the next.  
-The 2-bit reversible version used in this MVP is built from a small number of Toffoli and CNOT gates.
+This MVP uses a generic reversible n-bit ripple-carry adder (VBE-style: forward majority-carry chain → XOR sums → reverse-order uncompute) built by `make_nbit_adder(n, extra_ancilla)`.  
+Supported sizes: `n = 2` (15 gates, 9 wires) and `n = 4` (33 gates, 17 wires); formula: `9n-3` gates, `4n+1` base wires.  
+The 4-bit instance is the primary validation circuit; the 2-bit instance is the fast regression baseline.
 
 ---
 

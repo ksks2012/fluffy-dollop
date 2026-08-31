@@ -1,36 +1,41 @@
 # Local Mixing (MVP)
 
-A C++17 mini project implementing the **Local Mixing** obfuscation technique on reversible logic circuits, targeting a 2-bit reversible ripple-carry adder.
+A C++17 mini project implementing the **Local Mixing** obfuscation technique on reversible logic circuits, supporting n-bit ripple-carry adders (`n ∈ {2, 4}`).
 
 Local Mixing is an obfuscation paradigm (inspired by symmetric ciphers/hash functions rather than lattices) that repeatedly applies **functionality-preserving transformations** to small local regions of a circuit, obscuring the original computation path while keeping input-output behavior identical.
 
-**This MVP is a validation artifact, not a benchmark.** It proves the pipeline is implementable and functionally correct on a 15-gate adder. It does not measure obfuscation strength.
+**This MVP is a validation artifact, not a benchmark.** The **4-bit adder** (33 gates, 512-input truth table) is the primary validation circuit demonstrating the pipeline at a meaningful scale; the **2-bit adder** (15 gates, 32-input truth table) serves as the fast regression baseline.
 
 ---
 
 ## Pipeline
 
-The pipeline applies four phases to the canonical 2-bit adder:
+The pipeline applies four phases to an n-bit reversible ripple-carry adder:
 
 ```
-adder (15 gates) → sandwich → shuffle → inject junk → verification
+adder (9n-3 gates) → sandwich → shuffle → inject junk → verification
 ```
 
 | Phase | Operation | Effect |
 |-------|-----------|--------|
-| **Reversibility** | Build 2-bit ripple-carry adder from reversible gates (2 Toffoli + 5 CNOT in the canonical spec; 15 gates in the actual majority-based implementation) | Reversible baseline |
-| **Sandwiching** | Insert random self-inverse CNOT chains before/after the critical section | Scrambles intermediate values |
-| **Shuffling** | Permute gates within the same topological depth level | Alters execution order |
+| **Reversibility** | Build n-bit adder via `make_nbit_adder(n)` (VBE-style: forward carry → sums → reverse uncompute; `9n-3` gates) | Reversible baseline |
+| **Sandwiching** | Insert random self-inverse CNOT chains before/after the circuit | Scrambles intermediate values (Active: all wires; Safe: extra ancilla only) |
+| **Shuffling** | Permute gates within the same topological depth level | Alters execution order; larger for n=4 |
 | **Junk Injection** | Insert no-op Toffoli gates on zero-valued ancilla wires | Inflates circuit volume |
-| **Verification** | Exhaustive truth-table (32 inputs) + ancilla invariant check | Confirms functional equivalence |
+| **Verification** | Exhaustive truth-table (`2^(2n+1)` inputs) + ancilla invariant | Confirms functional equivalence |
 
-### Wire layout (canonical 2-bit adder)
-- Wires **0–4**: primary inputs `A1 A0 B1 B0 Cin`
-- Wires **5–7**: primary outputs `S1 S0 Cout`
-- Wire **8**: `carry_mid` working ancilla (returns to 0)
-- Wires **9+**: extra zero-initialized ancilla for sandwiching / junk injection
+### Wire layout contract (`make_nbit_adder(n, extra_ancilla)`)
+- Wires **[0..n-1]**: primary inputs `A_{n-1}..A_0` (MSB first)
+- Wires **[n..2n-1]**: primary inputs `B_{n-1}..B_0` (MSB first)
+- Wire **[2n]**: `Cin`
+- Wires **[2n+1..3n]**: primary outputs `S_{n-1}..S_0` (MSB first)
+- Wire **[3n+1]**: `Cout`
+- Wires **[3n+2..4n]**: `carry_1..carry_{n-1}` working ancilla (reverse-uncomputed to 0)
+- Wires **[4n+1..]**: extra zero-initialized ancilla for sandwiching / junk injection
 
-**Hard constraint:** the transformed circuit must be functionally equivalent to the original for every one of the 32 possible inputs.
+For n=2: 9 total wires. For n=4: 17+`extra_ancilla` wires.
+
+**Hard constraint:** the transformed circuit must be functionally equivalent to the original for every one of the `2^(2n+1)` possible inputs.
 
 ---
 
@@ -46,28 +51,46 @@ Requires CMake ≥ 3.16 and a C++17 compiler.
 ## Running
 
 ```bash
-./build/gate_driver                          # full pipeline (Active sandwich, default)
-./build/gate_driver --sandwich-mode=safe     # use Safe (no-op ancilla) sandwich
+./build/gate_driver                          # 2-bit, Active sandwich (default)
+./build/gate_driver --bits=4                 # 4-bit adder (primary validation circuit)
+./build/gate_driver --bits=4 --sandwich-mode=safe   # 4-bit, Safe sandwich (preserves truth table)
+./build/gate_driver --bits=2                 # explicit 2-bit (fast regression)
+./build/gate_driver --extra-ancilla=8        # wider ancilla pool
 ./build/gate_driver --sandwich-mode=active   # explicitly request Active sandwich
-./build/gate_driver --no-sandwich            # skip sandwiching entirely
+./build/gate_driver --no-sandwich            # skip sandwiching
 ./build/gate_driver --no-shuffle             # skip shuffling
 ./build/gate_driver --no-inject              # skip junk injection
 ```
 
-`--no-sandwich` takes precedence over `--sandwich-mode`: specifying both skips the phase entirely.
+`--no-sandwich` takes precedence over `--sandwich-mode`.  
+Unsupported `--bits` values (e.g. 3, 0, 8) print an error and exit non-zero.
 
-Example output (seed 42, Active mode — default):
+Example output — **4-bit, Safe sandwich** (seed 42):
 
 ```
-  adder       gates=15    wires=9    overhead=1.00x  ancilla=OK
-  sandwich    gates=31    wires=9    overhead=2.07x  ancilla=OK
-  shuffle     gates=31    wires=9    overhead=2.07x  ancilla=OK
-  inject      gates=43    wires=16   overhead=2.87x  ancilla=OK
+Seed: 42  bits=4  extra-ancilla=4
+Phases enabled: sandwich shuffle inject
+Sandwich mode: safe
 
-Final truth-table: PASS (all 32 inputs correct)
+Base adder depth analysis (33 gates, max depth 16):
+  depth  1 :   8 gate(s)
+  depth  2 :   5 gate(s)
+  depth  3 :   2 gate(s)
+  depth  4 :   2 gate(s)
+  ...
+  depth 16 :   1 gate(s)
+
+  Phase         Gates   Wires   Overhead   Ancilla
+  ------------  ------  ------  ---------  -------
+  adder       gates=33    wires=21   overhead=1.00x  ancilla=OK
+  sandwich    gates=49    wires=21   overhead=1.48x  ancilla=OK
+  shuffle     gates=49    wires=21   overhead=1.48x  ancilla=OK
+  inject      gates=61    wires=24   overhead=1.85x  ancilla=OK
+
+Final truth-table: PASS (all 512 inputs checked)
 ```
 
-Active mode leaves the wire count at 9 after sandwiching (no extra ancilla allocated) because it draws chain wires from the circuit's existing input and output wires rather than zero-initialized extras.
+Compare with **2-bit** (8 depth levels, 32 inputs) to observe the larger shuffle space and input coverage of the 4-bit circuit.
 
 ## Running Tests
 
@@ -76,13 +99,14 @@ cd build
 ctest
 ```
 
-6 test suites, all passing:
+7 test suites, all passing:
 - `gates` — Toffoli / CNOT / NOT truth tables, self-inverse, polymorphism
 - `circuit` — circuit class, 2-bit adder correctness, exhaustive truth-table, ancilla invariant
-- `sandwich` — CNOT-chain sandwiching preserves equivalence
+- `sandwich` — CNOT-chain sandwiching, Safe and Active modes, wire-pool scaling
 - `shuffle` — depth-level shuffling preserves equivalence, determinism
 - `inject_junk` — junk gate invariant, truth-table, ancilla invariant
-- `pipeline` — end-to-end full-pipeline verification
+- `pipeline` — end-to-end 2-bit and 4-bit pipeline verification
+- `adder` — n-bit adder wire-contract, gate-sequence spot-check, truth-table (n=2, n=4)
 
 ---
 
@@ -116,4 +140,4 @@ docs/      CONTEXT.md, DEFINITION.md, DOCUMENTATION-LIFECYCLE.md,
 - Nonlinear gadgetization
 - Security / attack resistance evaluation
 - Automatic irreversible-to-reversible conversion
-- Circuits larger than 2-bit
+- Circuits larger than 4-bit
