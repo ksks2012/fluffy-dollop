@@ -31,6 +31,10 @@ void Circuit::insert_gate(int pos, std::unique_ptr<Gate> gate) {
     gates_.insert(gates_.begin() + pos, std::move(gate));
 }
 
+void Circuit::remove_gates(int pos, int count) {
+    gates_.erase(gates_.begin() + pos, gates_.begin() + pos + count);
+}
+
 void Circuit::extend_wires(int new_num_wires) {
     if (new_num_wires > num_wires_) {
         num_wires_ = new_num_wires;

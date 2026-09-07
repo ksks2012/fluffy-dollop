@@ -19,6 +19,11 @@ public:
     // insert_gate(0, g) prepends; insert_gate(gate_count(), g) appends.
     void insert_gate(int pos, std::unique_ptr<Gate> gate);
 
+    // Remove `count` consecutive gates starting at position `pos`.
+    // remove_gates(pos, 1) removes gates[pos]; a removed gate's own object
+    // is destroyed.  Positions after pos shift down by `count`.
+    void remove_gates(int pos, int count);
+
     // Expand the wire vector to cover new_num_wires total wires.
     // New wires are zero-initialized.  No-op if already large enough.
     void extend_wires(int new_num_wires);
