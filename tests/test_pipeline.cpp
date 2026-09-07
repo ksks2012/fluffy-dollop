@@ -23,16 +23,17 @@ static PipelineConfig default_cfg() { return {}; }  // all phases on, seed=42
 // ---------------------------------------------------------------------------
 static void test_pipeline_phase_count_full() {
     auto r = run_full_pipeline(default_cfg());
-    // adder + sandwich + shuffle + inject = 4 phase entries
-    CHECK(r.phases.size() == 4);
+    // adder + sandwich + shuffle + replace + inject = 5 phase entries
+    CHECK(r.phases.size() == 5);
 }
 
 static void test_pipeline_phase_names() {
     auto r = run_full_pipeline(default_cfg());
     CHECK(r.phases[0].name == "adder");
     CHECK(r.phases[1].name == "sandwich");
-    CHECK(r.phases[2].name == "shuffle");
-    CHECK(r.phases[3].name == "inject");
+    CHECK(r.phases[2].name == "replace");
+    CHECK(r.phases[3].name == "shuffle");
+    CHECK(r.phases[4].name == "inject");
 }
 
 // ---------------------------------------------------------------------------
@@ -52,14 +53,14 @@ static void test_pipeline_gate_count_sandwich() {
 
 static void test_pipeline_gate_count_shuffle_unchanged() {
     auto r = run_full_pipeline(default_cfg());
-    // shuffle never changes gate count
-    CHECK(r.phases[2].gate_count == r.phases[1].gate_count);
+    // shuffle never changes gate count (phases[2]=replace, phases[3]=shuffle)
+    CHECK(r.phases[3].gate_count == r.phases[2].gate_count);
 }
 
 static void test_pipeline_gate_count_inject() {
     auto cfg = default_cfg();
     auto r = run_full_pipeline(cfg);
-    CHECK(r.phases[3].gate_count == r.phases[2].gate_count + cfg.inject_count);
+    CHECK(r.phases[4].gate_count == r.phases[3].gate_count + cfg.inject_count);
 }
 
 // ---------------------------------------------------------------------------
@@ -157,11 +158,11 @@ static void test_pipeline_no_sandwich() {
     PipelineConfig cfg;
     cfg.enable_sandwich = false;
     auto r = run_full_pipeline(cfg);
-    // phases: adder + shuffle + inject = 3
-    CHECK(r.phases.size() == 3);
+    // phases: adder + replace + shuffle + inject = 4
+    CHECK(r.phases.size() == 4);
     CHECK(r.phases[0].name == "adder");
-    CHECK(r.phases[1].name == "shuffle");
-    // No sandwich → no extra ancilla → shuffle won't change gate count
+    CHECK(r.phases[1].name == "replace");
+    // No sandwich → no extra ancilla → replace/shuffle won't change gate count
     CHECK(r.phases[0].gate_count == make_2bit_adder().gate_count());
     CHECK(check_truth_table(r.circuit));
 }
@@ -171,9 +172,10 @@ static void test_pipeline_no_shuffle() {
     cfg.enable_shuffle  = false;
     cfg.sandwich_mode   = SandwichMode::Safe;  // isolate phase toggle; Safe preserves truth table
     auto r = run_full_pipeline(cfg);
-    CHECK(r.phases.size() == 3);
+    CHECK(r.phases.size() == 4);
     CHECK(r.phases[1].name == "sandwich");
-    CHECK(r.phases[2].name == "inject");
+    CHECK(r.phases[2].name == "replace");
+    CHECK(r.phases[3].name == "inject");
     CHECK(check_truth_table(r.circuit));
 }
 
@@ -182,8 +184,9 @@ static void test_pipeline_no_inject() {
     cfg.enable_inject   = false;
     cfg.sandwich_mode   = SandwichMode::Safe;  // isolate phase toggle; Safe preserves truth table
     auto r = run_full_pipeline(cfg);
-    CHECK(r.phases.size() == 3);
-    CHECK(r.phases[2].name == "shuffle");
+    CHECK(r.phases.size() == 4);
+    CHECK(r.phases[2].name == "replace");
+    CHECK(r.phases[3].name == "shuffle");
     CHECK(check_truth_table(r.circuit));
 }
 
@@ -191,6 +194,7 @@ static void test_pipeline_adder_only() {
     PipelineConfig cfg;
     cfg.enable_sandwich = false;
     cfg.enable_shuffle  = false;
+    cfg.enable_replace  = false;
     cfg.enable_inject   = false;
     auto r = run_full_pipeline(cfg);
     CHECK(r.phases.size() == 1);
@@ -269,11 +273,83 @@ static void test_pipeline_no_sandwich_beats_mode() {
     cfg.enable_sandwich = false;
     cfg.sandwich_mode   = SandwichMode::Active;
     auto r = run_full_pipeline(cfg);
-    // adder + shuffle + inject = 3; no sandwich phase entry
-    CHECK(r.phases.size() == 3);
+    // adder + replace + shuffle + inject = 4; no sandwich phase entry
+    CHECK(r.phases.size() == 4);
     CHECK(r.phases[0].name == "adder");
-    CHECK(r.phases[1].name == "shuffle");
+    CHECK(r.phases[1].name == "replace");
     CHECK(check_truth_table(r.circuit));
+}
+
+// ===========================================================================
+// Ticket 0018: local-replacement (R1) pipeline phase
+// ===========================================================================
+
+// The replace phase runs right after sandwich (before shuffle) and therefore
+// sees the intact strict-adjacency S-triple windows: hits == n for both sizes.
+// (Shuffle destroys the windows — running replace after shuffle yields ~0 hits —
+// which is why the phase order is sandwich → replace → shuffle; ADR 0004.)
+static void test_pipeline_replace_records_hits() {
+    auto r = run_full_pipeline(default_cfg());
+    const PhaseStats* replace = nullptr;
+    for (const auto& p : r.phases)
+        if (p.name == "replace") { replace = &p; break; }
+    CHECK(replace != nullptr);
+    if (replace) {
+        CHECK(replace->replacements == 2);  // n=2 bare adder yields 2 windows
+        // Replacement adds 2 Toffoli per window → gate count grows accordingly
+        // vs. the sandwich phase before it.
+        CHECK(replace->gate_count >= replace->replacements * 2);
+    }
+}
+
+// Same seed: with replace enabled, every phase *before* replace (adder,
+// sandwich) has identical gate counts to the replace-disabled run; the only
+// divergence is the replace phase and beyond.
+static void test_pipeline_replace_same_seed_prefix_identical() {
+    PipelineConfig on  = default_cfg();
+    PipelineConfig off = default_cfg();
+    off.enable_replace = false;
+    auto r_on  = run_full_pipeline(on);
+    auto r_off = run_full_pipeline(off);
+
+    CHECK(r_on.phases.size() == 5);
+    CHECK(r_off.phases.size() == 4);
+
+    size_t min = 2;  // adder, sandwich — both run before replace
+    for (size_t i = 0; i < min; ++i) {
+        CHECK(r_on.phases[i].gate_count == r_off.phases[i].gate_count);
+        CHECK(r_on.phases[i].wire_count == r_off.phases[i].wire_count);
+    }
+}
+
+// enable_replace=false skips the phase entirely: the extra Toffoli gates are
+// absent, so the final circuit has exactly 2*hits fewer gates than the
+// replace-enabled run (2 Toffoli added per window).
+static void test_pipeline_replace_disabled_identical() {
+    // Run 1: default (replace enabled); Run 2: replace disabled.
+    auto r_on  = run_full_pipeline(default_cfg());
+    PipelineConfig off_cfg;
+    off_cfg.enable_replace = false;
+    auto r_off = run_full_pipeline(off_cfg);
+
+    // The only difference between the two runs is the replace phase's added
+    // Toffoli pairs: off_final = on_final - 2*replacements.
+    const PhaseStats* replace = nullptr;
+    for (const auto& p : r_on.phases)
+        if (p.name == "replace") { replace = &p; break; }
+    CHECK(replace != nullptr);
+    if (replace)
+        CHECK(r_off.phases.back().gate_count + 2 * replace->replacements
+              == r_on.phases.back().gate_count);
+}
+
+// Safe-mode full pipeline with replace enabled stays truthful + ancilla-clean.
+static void test_pipeline_replace_safe_truth_table_and_ancilla() {
+    PipelineConfig cfg;
+    cfg.sandwich_mode = SandwichMode::Safe;
+    auto r = run_full_pipeline(cfg);
+    CHECK(check_truth_table(r.circuit));
+    for (const auto& p : r.phases) CHECK(p.ancilla_ok);
 }
 
 // ===========================================================================
@@ -293,6 +369,21 @@ static void test_pipeline_4bit_truth_table() {
     cfg.sandwich_mode = SandwichMode::Safe;  // Safe preserves truth table; Active scrambles it
     auto r = run_full_pipeline(cfg);
     CHECK(check_truth_table(r.circuit));
+}
+
+// Full 4-bit pipeline with replace enabled (Safe sandwich) passes the 512-input TT.
+// Replace runs before shuffle, so it sees intact windows: hits == 4.
+static void test_pipeline_replace_4bit_truth_table() {
+    auto cfg = make_4bit_cfg();
+    cfg.sandwich_mode = SandwichMode::Safe;
+    auto r = run_full_pipeline(cfg);
+    CHECK(check_truth_table(r.circuit));
+    for (const auto& p : r.phases) CHECK(p.ancilla_ok);
+    const PhaseStats* replace = nullptr;
+    for (const auto& p : r.phases)
+        if (p.name == "replace") { replace = &p; break; }
+    CHECK(replace != nullptr);
+    if (replace) CHECK(replace->replacements == 4);
 }
 
 // Ancilla invariant at every phase boundary (Safe mode — Active is seed-dependent).
@@ -367,6 +458,13 @@ int main() {
     test_pipeline_active_mode_scrambles();
     test_pipeline_active_mode_ancilla_invariant();
     test_pipeline_no_sandwich_beats_mode();
+
+    // Ticket 0018: replace phase
+    test_pipeline_replace_records_hits();
+    test_pipeline_replace_same_seed_prefix_identical();
+    test_pipeline_replace_disabled_identical();
+    test_pipeline_replace_safe_truth_table_and_ancilla();
+    test_pipeline_replace_4bit_truth_table();
 
     // 4-bit pipeline
     test_pipeline_4bit_truth_table();

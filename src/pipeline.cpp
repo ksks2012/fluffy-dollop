@@ -3,6 +3,7 @@
 #include "sandwich.hpp"
 #include "shuffle.hpp"
 #include "inject_junk.hpp"
+#include "local_replace.hpp"
 #include <algorithm>
 #include <random>
 
@@ -124,7 +125,26 @@ PipelineResult run_full_pipeline(const PipelineConfig& cfg) {
         });
     }
 
-    // Phase 2 — shuffle
+    // Phase 2 — local replacement (R1): single-pass, fixed rewrite.
+    // Runs BEFORE shuffle: shuffle reorders gates within each depth level, and
+    // the three S-CNOTs of an R1 window are serially dependent (all write s,
+    // so they sit at different depths), so shuffle would interleave unrelated
+    // same-depth gates between them and destroy the strict adjacency the match
+    // relies on. Replacing while the structure is still tight keeps hits == n.
+    if (cfg.enable_replace) {
+        LocalReplaceConfig replace_cfg;
+        int hits = apply_local_replace(circuit, replace_cfg, rng);
+        phases.push_back({
+            "replace",
+            circuit.gate_count(),
+            circuit.num_wires(),
+            static_cast<double>(circuit.gate_count()) / ORIGINAL_GATES,
+            check_ancilla_invariant(circuit),
+            hits
+        });
+    }
+
+    // Phase 3 — shuffle
     if (cfg.enable_shuffle) {
         shuffle_depth_levels(circuit, rng);
         phases.push_back({
@@ -136,7 +156,7 @@ PipelineResult run_full_pipeline(const PipelineConfig& cfg) {
         });
     }
 
-    // Phase 3 — inject junk
+    // Phase 4 — inject junk
     if (cfg.enable_inject) {
         inject_junk_gates(circuit, inject_pool, cfg.inject_count, rng);
         phases.push_back({

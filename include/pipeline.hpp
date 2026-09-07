@@ -23,10 +23,13 @@ struct PipelineConfig {
     SandwichMode sandwich_mode       = SandwichMode::Active;
     int  sandwich_chain_length       = 8;
 
-    // Phase 2 — shuffle
+    // Phase 2 — local replacement (R1)
+    bool enable_replace       = true;
+
+    // Phase 3 — shuffle
     bool enable_shuffle       = true;
 
-    // Phase 3 — junk injection
+    // Phase 4 — junk injection
     bool enable_inject        = true;
     int  inject_count         = 12;
 };
@@ -39,7 +42,8 @@ struct PhaseStats {
     int  gate_count;
     int  wire_count;
     double overhead;       // gate_count / original_gate_count (adder's gate count)
-    bool ancilla_ok;       // all non-output ancilla wires = 0 for all 32 inputs
+    bool ancilla_ok;       // all non-output ancilla wires = 0 for all inputs
+    int  replacements = 0; // windows replaced (0 for every phase except `replace`)
 };
 
 // ---------------------------------------------------------------------------
@@ -62,7 +66,10 @@ struct PipelineResult {
 // ---------------------------------------------------------------------------
 // run_full_pipeline — executes phases in order and records stats.
 //
-// Phase order: adder (0) → sandwich (1) → shuffle (2) → inject (3)
+// Phase order: adder (0) → sandwich (1) → replace (2) → shuffle (3) → inject (4)
+// replace runs BEFORE shuffle: shuffle interleaves unrelated same-depth gates
+// between the S-triple windows (which sit at different depths), destroying the
+// strict adjacency the R1 match requires. See ADR 0004 order amendment.
 // Disabled phases are skipped; their stats entry is omitted.
 // ---------------------------------------------------------------------------
 PipelineResult run_full_pipeline(const PipelineConfig& cfg = {});
