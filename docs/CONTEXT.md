@@ -17,9 +17,10 @@ Local Mixing (as defined in `definition.md`) is a paradigm that repeatedly appli
 - Reversibility
 - Hardening via sandwiching
 - Simplified mixing (depth-level shuffling + zero-ancilla junk injection)
+- One fixed, hand-written, provably-equivalent **local replacement** (R1) — a minimal sliver of generation mixing (see ADR 0004)
 
 **Non-goals (explicitly out of scope)**  
-- Full generation mixing (replacement of local sub-circuits from large equivalence tables)
+- Full generation mixing (automated replacement of local sub-circuits from large equivalence tables) — *a single fixed, hand-written, provably-equivalent local rewrite (R1) is inside the MVP scope (ADR 0004)*
 - Advanced / nonlinear gadgetization
 - Any form of security evaluation or attack resistance measurement
 - Automatic irreversible-to-reversible conversion of arbitrary circuits
@@ -49,6 +50,19 @@ The **4-bit ripple-carry adder** (33 gates, 21 wires, 512-input truth table) is 
 - `PipelineConfig::sandwich_mode` defaults to `SandwichMode::Active`; pass `--sandwich-mode=safe` on the CLI to switch.
 
 ### Phase 3: Mixing (Simplified)
+
+Pipeline order: `adder → sandwich → local replace (R1) → shuffle → junk injection` (local replace is
+described in ADR 0004).
+
+- **Local Replacement (R1)**: matches strictly-adjacent triples of CNOT gates in the topological
+  order (same target wire `s`, pairwise-distinct controls `a, b, c`, arbitrary control order) and
+  rewrites each window in place as `Toffoli(a,b,s); CNOT(a,s); CNOT(b,s); CNOT(c,s); Toffoli(a,b,s)`.
+  Net effect is identical (`s ⊕= a ⊕ b ⊕ c`); the rewrite adds 2 Toffoli gates per window and
+  borrows 0 ancilla wires. Runs **before** shuffle: shuffle rearranges gates within each depth level,
+  and since the three S-CNOTs of a window are serially dependent (all write `s`), they sit at
+  different depths — shuffle would interleave unrelated same-depth gates and destroy the strict
+  adjacency the match requires (ADR 0004 order amendment). `replacements == n` (n=2 → 2, n=4 → 4)
+  holds deterministically when it runs before shuffle.
 - **Shuffling**: Reorder gates that share the same topological depth level. Gates at the same depth are independent and may be freely permuted.
 - **Junk Gate Injection**: Insert Toffoli gates that touch at least one zero-valued ancilla wire. Because one control is 0, the gate acts as an identity on the observable computation while increasing circuit volume.
 - These operations constitute the MVP’s local, functionality-preserving transformations. They are a deliberate simplification of the full Local Mixing ideal (which includes repeated replacement of small sub-circuits by equivalent alternatives).
@@ -74,7 +88,7 @@ The **4-bit ripple-carry adder** (33 gates, 21 wires, 512-input truth table) is 
 | 5  | Hardening method          | Random CNOT sandwich chains         | Self-inverse, simple to insert/remove, preserves reversibility, integrates cleanly with later shuffling. |
 | 6  | Junk gate strategy        | Toffoli on zero-valued ancilla      | Identity-preserving when a control is 0; harder for trivial cleanup passes to remove than plain identity pairs. Requires strict maintenance of the zero-ancilla invariant. |
 | 7  | Shuffling algorithm       | Topological depth level             | Correct by construction (same-depth gates are independent). Sufficient for a small circuit. |
-| 8  | Mixing scope              | Simplified only (shuffle + junk + sandwich) | Full generation mixing and nonlinear gadgets are out of scope; keeps MVP focused and implementable. |
+| 8  | Mixing scope              | Simplified (shuffle + junk + sandwich) + one fixed local replacement (R1) | Full automated generation mixing and nonlinear gadgets are out of scope; R1 (ADR 0004) is a deliberately minimal, hand-written, provably-equivalent sliver that validates the local-replacement concept; keeps MVP focused and implementable. |
 | 9  | Equivalence testing       | Exhaustive truth table (`2^(2n+1)` cases)   | Trivial runtime for n≤4; gives 100 % functional correctness guarantee. Generalized checker derives n from `num_inputs()`. |
 | 10 | Ancilla management        | Pre-allocate a fixed pool of zero-initialized ancilla wires | Guarantees the zero invariant required by junk gates and hardening; exact count to be decided in implementation Spec. |
 | 11 | Randomness                | Deterministic and reproducible (`std::mt19937` or equivalent + recorded seed) | Essential for debugging and for repeating verification runs. |

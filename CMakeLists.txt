@@ -12,6 +12,7 @@ add_library(common_lib STATIC
     src/shuffle.cpp
     src/inject_junk.cpp
     src/pipeline.cpp
+    src/local_replace.cpp
 )
 target_include_directories(common_lib PUBLIC ${CMAKE_SOURCE_DIR}/include)
 
@@ -48,3 +49,7 @@ add_test(NAME pipeline COMMAND test_pipeline)
 add_executable(test_adder tests/test_adder.cpp)
 target_link_libraries(test_adder PRIVATE common_lib)
 add_test(NAME adder COMMAND test_adder)
+
+add_executable(test_local_replace tests/test_local_replace.cpp)
+target_link_libraries(test_local_replace PRIVATE common_lib)
+add_test(NAME local_replace COMMAND test_local_replace)

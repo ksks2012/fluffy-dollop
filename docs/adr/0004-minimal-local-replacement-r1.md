@@ -26,7 +26,7 @@ canonical case, pipeline-integrated in the same shape as the existing phases.
 
 ## Solution
 
-A new pipeline phase `local replace` sits between `shuffle` and `inject`. In one pass over the
+A new pipeline phase `local replace` sits between `sandwich` and `shuffle`. In one pass over the
 current topological gate sequence, it finds every window matching the `R1` pattern and replaces it
 in place with the `R1` equivalent sub-circuit. The replacement adds 2 Toffoli gates per window and
 no new wires, so gate-type counts become distinguishable while functional equivalence and the
@@ -35,8 +35,20 @@ zero-ancilla invariant are preserved at every phase boundary.
 Full phase order becomes:
 
 ```
-adder → sandwich → shuffle → local replace (R1) → inject → verification
+adder → sandwich → local replace (R1) → shuffle → inject → verification
 ```
+
+> **Order amendment (empirical, not silent):** the original grill decision Q4 placed `replace`
+> *after* `shuffle`. During implementation, measurement showed that shuffle reduces full-pipeline
+> hits to ~0: shuffle permutes gates within each depth level, and the three S-CNOTs of a window all
+> write `s`, so they are serially dependent (WAW) and sit at *different* depths — after shuffle,
+> unrelated same-depth gates get interleaved between them, destroying the strict adjacency the match
+> requires. Sandwich preserves the windows (2/4 hits), shuffle destroys them (0 hits). Rerunning
+> match-rate evaluation per Q4's own precondition ("若實測匹配率過低，再單開評估"), the phase was
+> moved before shuffle — replacement now happens while the structure is still tight, keeping
+> `replacements == n` deterministic on the full pipeline (n=2 → 2, n=4 → 4 across Safe/Active and
+> all seeds tested). A stricter post-shuffle matcher (allowing unrelated intervening gates) remains a
+> v2 option; not enabled here.
 
 ---
 
@@ -94,7 +106,10 @@ regression authority going forward is the test suite (tickets 0017/0019), not th
 4. **R1 only** — single pattern locked for the first version (see Canonical Rewrite section).
 5. **Phase shape — single pass (A)** — each matching window is replaced exactly once; no rescan,
    no multi-round iteration. A `--replace-max` limit is deferred to a second version.
-6. **Pipeline position** — `adder → sandwich → shuffle → local replace (R1) → inject → verification`.
+6. **Pipeline position** — `adder → sandwich → local replace (R1) → shuffle → inject → verification`.
+   *(Amended from the grill session's original `shuffle → replace` order — see the Order amendment
+   note in the Solution section: shuffle destroys the strict-adjacency windows, so replace runs while
+   the structure is still tight.)*
 7. **Same phase shape as existing phases** — `apply_local_replace(Circuit&, ..., rng)` with a
    `PipelineConfig` toggle, a CLI switch, `PhaseStats` entry, and per-phase ancilla verification.
 8. **Matching rule** — strictly adjacent triples of CNOT, same target, pairwise-distinct controls,
