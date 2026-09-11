@@ -20,7 +20,7 @@ Local Mixing (as defined in `definition.md`) is a paradigm that repeatedly appli
 - One fixed, hand-written, provably-equivalent **local replacement** (R1) — a minimal sliver of generation mixing (see ADR 0004)
 
 **Non-goals (explicitly out of scope)**  
-- Full generation mixing (automated replacement of local sub-circuits from large equivalence tables) — *a single fixed, hand-written, provably-equivalent local rewrite (R1) is inside the MVP scope (ADR 0004)*
+- Full generation mixing (automated replacement of local sub-circuits from large equivalence tables) — *R1 (S-triple) and R2 (carry-majority) fixed, hand-written, provably-equivalent local rewrites are inside the MVP scope (ADR 0004 / ADR 0005); R2 extends the R1 sliver as a second pass within the replace phase*
 - Advanced / nonlinear gadgetization
 - Any form of security evaluation or attack resistance measurement
 - Automatic irreversible-to-reversible conversion of arbitrary circuits
@@ -63,6 +63,12 @@ described in ADR 0004).
   different depths — shuffle would interleave unrelated same-depth gates and destroy the strict
   adjacency the match requires (ADR 0004 order amendment). `replacements == n` (n=2 → 2, n=4 → 4)
   holds deterministically when it runs before shuffle.
+- **Local Replacement (R2)**: a second pass within the replace phase (ADR 0005), running directly
+  after R1 in the same pass. Matches X-Tof-X triples (a Toffoli flanked by one CNOT on each side,
+  all writing the same target wire `z`) and rewrites each window in place with a half-toffoli
+  reconstruction; the rewrite is equivalent iff `z` is a touchable zero-ancilla wire — R2 borrows
+  exactly 1 borrowed ancilla and requires `extra_ancilla >= 1` (extra=0 → r2=0 correctly). On the
+  bare adder R2 hits `r2 == n` (2 for n=2, 4 for n=4) with `r1 == n`, total `== 2n`.
 - **Shuffling**: Reorder gates that share the same topological depth level. Gates at the same depth are independent and may be freely permuted.
 - **Junk Gate Injection**: Insert Toffoli gates that touch at least one zero-valued ancilla wire. Because one control is 0, the gate acts as an identity on the observable computation while increasing circuit volume.
 - These operations constitute the MVP’s local, functionality-preserving transformations. They are a deliberate simplification of the full Local Mixing ideal (which includes repeated replacement of small sub-circuits by equivalent alternatives).
@@ -88,11 +94,12 @@ described in ADR 0004).
 | 5  | Hardening method          | Random CNOT sandwich chains         | Self-inverse, simple to insert/remove, preserves reversibility, integrates cleanly with later shuffling. |
 | 6  | Junk gate strategy        | Toffoli on zero-valued ancilla      | Identity-preserving when a control is 0; harder for trivial cleanup passes to remove than plain identity pairs. Requires strict maintenance of the zero-ancilla invariant. |
 | 7  | Shuffling algorithm       | Topological depth level             | Correct by construction (same-depth gates are independent). Sufficient for a small circuit. |
-| 8  | Mixing scope              | Simplified (shuffle + junk + sandwich) + one fixed local replacement (R1) | Full automated generation mixing and nonlinear gadgets are out of scope; R1 (ADR 0004) is a deliberately minimal, hand-written, provably-equivalent sliver that validates the local-replacement concept; keeps MVP focused and implementable. |
+| 8  | Mixing scope              | Simplified (shuffle + junk + sandwich) + fixed local replacements R1 + R2 | Full automated generation mixing and nonlinear gadgets are out of scope; R1 (ADR 0004) is the deliberately minimal S-triple sliver and R2 (ADR 0005) extends it with a carry-majority X-Tof-X rewrite — both hand-written, provably equivalent, and validating the local-replacement concept. |
 | 9  | Equivalence testing       | Exhaustive truth table (`2^(2n+1)` cases)   | Trivial runtime for n≤4; gives 100 % functional correctness guarantee. Generalized checker derives n from `num_inputs()`. |
 | 10 | Ancilla management        | Pre-allocate a fixed pool of zero-initialized ancilla wires | Guarantees the zero invariant required by junk gates and hardening; exact count to be decided in implementation Spec. |
 | 11 | Randomness                | Deterministic and reproducible (`std::mt19937` or equivalent + recorded seed) | Essential for debugging and for repeating verification runs. |
 | 12 | Project structure         | `gate.*` + `circuit.*` + `main.cpp` | Separates core abstractions from the phase pipeline; sufficient for MVP. |
+| 13 | R2 borrow contract        | `z` drawn from the extra pool, first non-output wire with index ≥ 4n+1 (n=(num_inputs−1)/2) | Index-based selection is robust across sandwich modes (a "not targeted by any gate" heuristic failed post-Safe-sandwich); R2 requires `extra_ancilla >= 1` (extra=0 → r2=0 correctly). |
 
 ---
 

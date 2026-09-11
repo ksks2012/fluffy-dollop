@@ -523,6 +523,37 @@ static void test_pipeline_r2_bare_adder_n4() {
     }
 }
 
+// Ticket 0023: exact Safe-sandwich pipeline hit counts (measured seed 42).
+// The ticket's original R1+R2 totals (5 / 11) were stale ADR R2-standalone
+// numbers; the measured pipeline counts differ because R1 runs first, and
+// the Safe sandwich adds CNOT gates that create additional R2-match windows.
+// n=2: R1=2, R2=3, total=5 (not 5=3+2 from ADR).
+// n=4: R1=4, R2=6, total=10 (not 11=7+4 from ADR).
+static void test_pipeline_r2_safe_exact_hit_counts() {
+    for (int n : {2, 4}) {
+        PipelineConfig cfg;
+        cfg.n = n;
+        cfg.extra_ancilla = 4;
+        cfg.enable_replace_r2 = true;
+        cfg.sandwich_mode = SandwichMode::Safe;
+        cfg.seed = 42;
+        auto r = run_full_pipeline(cfg);
+        CHECK(check_truth_table(r.circuit));
+        for (const auto& p : r.phases) CHECK(p.ancilla_ok);
+
+        const PhaseStats* replace = nullptr;
+        for (const auto& p : r.phases)
+            if (p.name == "replace") { replace = &p; break; }
+        CHECK(replace != nullptr);
+        if (replace) {
+            CHECK(replace->replacements_r1 == n);   // R1 deterministic
+            if (n == 2) CHECK(replace->replacements_r2 == 3);
+            else       CHECK(replace->replacements_r2 == 6);
+            CHECK(replace->replacements == replace->replacements_r1 + replace->replacements_r2);
+        }
+    }
+}
+
 // R2 on: extra_ancilla=0, no sandwich (needs extra ancilla).
 // R2 should report 0 hits, TT + ancilla PASS.
 static void test_pipeline_r2_no_extra_ancilla() {
@@ -697,6 +728,7 @@ int main() {
     test_pipeline_r2_default_off();
     test_pipeline_r2_bare_adder_n2();
     test_pipeline_r2_bare_adder_n4();
+    test_pipeline_r2_safe_exact_hit_counts();
     test_pipeline_r2_no_extra_ancilla();
     test_pipeline_r2_off_same_as_r1_only();
     test_pipeline_no_replace_disables_r2();

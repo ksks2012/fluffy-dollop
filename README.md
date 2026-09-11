@@ -13,13 +13,14 @@ Local Mixing is an obfuscation paradigm (inspired by symmetric ciphers/hash func
 The pipeline applies four phases to an n-bit reversible ripple-carry adder:
 
 ```
-adder (9n-3 gates) → sandwich → shuffle → inject junk → verification
+adder (9n-3 gates) → sandwich → local replace (R1+R2) → shuffle → inject junk → verification
 ```
 
 | Phase | Operation | Effect |
 |-------|-----------|--------|
 | **Reversibility** | Build n-bit adder via `make_nbit_adder(n)` (VBE-style: forward carry → sums → reverse uncompute; `9n-3` gates) | Reversible baseline |
-| **Sandwiching** | Insert random self-inverse CNOT chains before/after the circuit | Scrambles intermediate values (Active: all wires; Safe: extra ancilla only) |
+| **Sandwiching** | Insert random self-inverse CNOT chains before/after the circuit | Scrambles intermediate values. Safe (default): extra ancilla only, equivalence guaranteed. Active (experimental): all wires, does NOT guarantee TT (ticket 0024) |
+| **Local Replacement** | Rewrite matched CNOT-triple / X-Tof-X windows (R1 R2) | Adds Toffoli/CNOT volume; `r1 == n`, `r2 == n` (hits) |
 | **Shuffling** | Permute gates within the same topological depth level | Alters execution order; larger for n=4 |
 | **Junk Injection** | Insert no-op Toffoli gates on zero-valued ancilla wires | Inflates circuit volume |
 | **Verification** | Exhaustive truth-table (`2^(2n+1)` inputs) + ancilla invariant | Confirms functional equivalence |
@@ -51,18 +52,21 @@ Requires CMake ≥ 3.16 and a C++17 compiler.
 ## Running
 
 ```bash
-./build/gate_driver                          # 2-bit, Active sandwich (default)
+./build/gate_driver                          # 2-bit, Safe sandwich (default)
 ./build/gate_driver --bits=4                 # 4-bit adder (primary validation circuit)
-./build/gate_driver --bits=4 --sandwich-mode=safe   # 4-bit, Safe sandwich (preserves truth table)
-./build/gate_driver --bits=2                 # explicit 2-bit (fast regression)
+./build/gate_driver --bits=2 --replace-r2    # 2-bit, enable R2 replacement (needs extra ancilla)
 ./build/gate_driver --extra-ancilla=8        # wider ancilla pool
-./build/gate_driver --sandwich-mode=active   # explicitly request Active sandwich
+./build/gate_driver --sandwich-mode=active   # experimental Active (warning; NOT TT-safe)
+./build/gate_driver --no-replace             # disable local replacement (R1+R2)
 ./build/gate_driver --no-sandwich            # skip sandwiching
 ./build/gate_driver --no-shuffle             # skip shuffling
 ./build/gate_driver --no-inject              # skip junk injection
+./build/gate_driver --verbose-metrics        # print per-depth gate histogram of final circuit
 ```
 
 `--no-sandwich` takes precedence over `--sandwich-mode`.  
+The **default sandwich mode is `safe`** (equivalence-guaranteed). Requesting `--sandwich-mode=active` prints a
+warning: Active does NOT guarantee truth-table / ancilla equivalence (known defect, ticket 0024; ADR 0002 amend).
 Unsupported `--bits` values (e.g. 3, 0, 8) print an error and exit non-zero.
 
 Example output — **4-bit, Safe sandwich** (seed 42):
@@ -82,10 +86,11 @@ Base adder depth analysis (33 gates, max depth 16):
 
   Phase         Gates   Wires   Overhead   Ancilla
   ------------  ------  ------  ---------  -------
-  adder       gates=33    wires=21   overhead=1.00x  ancilla=OK
-  sandwich    gates=49    wires=21   overhead=1.48x  ancilla=OK
-  shuffle     gates=49    wires=21   overhead=1.48x  ancilla=OK
-  inject      gates=61    wires=24   overhead=1.85x  ancilla=OK
+  adder       gates=33    wires=21   overhead=1.00x  ancilla=OK  depth=16 toffoli=21 cnot=12
+  sandwich    gates=49    wires=21   overhead=1.48x  ancilla=OK  depth=16 toffoli=21 cnot=28
+  replace     gates=57    wires=21   overhead=1.73x  ancilla=OK  hits=4    depth=16 toffoli=29 cnot=28
+  shuffle     gates=57    wires=21   overhead=1.73x  ancilla=OK  depth=16 toffoli=29 cnot=28
+  inject      gates=69    wires=24   overhead=2.09x  ancilla=OK  depth=16 toffoli=41 cnot=28
 
 Final truth-table: PASS (all 512 inputs checked)
 ```
@@ -99,7 +104,7 @@ cd build
 ctest
 ```
 
-7 test suites, all passing:
+8 test suites, all passing:
 - `gates` — Toffoli / CNOT / NOT truth tables, self-inverse, polymorphism
 - `circuit` — circuit class, 2-bit adder correctness, exhaustive truth-table, ancilla invariant
 - `sandwich` — CNOT-chain sandwiching, Safe and Active modes, wire-pool scaling
@@ -107,6 +112,7 @@ ctest
 - `inject_junk` — junk gate invariant, truth-table, ancilla invariant
 - `pipeline` — end-to-end 2-bit and 4-bit pipeline verification
 - `adder` — n-bit adder wire-contract, gate-sequence spot-check, truth-table (n=2, n=4)
+- `local_replace` — R1 (S-triple) and R2 (carry-majority) local rewrites, structural metrics
 
 ---
 
@@ -114,11 +120,12 @@ ctest
 
 ```
 include/   gate.h, circuit.hpp, adder.hpp, sandwich.hpp, shuffle.hpp,
-           inject_junk.hpp, pipeline.hpp
+           inject_junk.hpp, pipeline.hpp, local_replace.hpp
 src/       main.cpp, circuit.cpp, adder.cpp, sandwich.cpp, shuffle.cpp,
-           inject_junk.cpp, pipeline.cpp
+           inject_junk.cpp, pipeline.cpp, local_replace.cpp
 tests/     test_gates.cpp, test_circuit.cpp, test_sandwich.cpp,
-           test_shuffle.cpp, test_inject_junk.cpp, test_pipeline.cpp
+           test_shuffle.cpp, test_inject_junk.cpp, test_pipeline.cpp,
+           test_local_replace.cpp
 docs/      CONTEXT.md, DEFINITION.md, DOCUMENTATION-LIFECYCLE.md,
            adr/, tickets/, summary/
 ```
