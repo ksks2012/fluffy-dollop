@@ -178,9 +178,9 @@ static void test_no_match_unchanged() {
 static void test_r2_hand_built_window() {
     // Build: Toffoli(0,1,3); Toffoli(0,2,3); Toffoli(1,2,3)
     // 3 distinct controls {0,1,2}, same target 3.
-    // Wire 4 = extra-ancilla z (index 4 = 4*1+0 >= 4n+1 for n=1, but we
-    // just need it to be present; the circuit has 5 wires).
-    Circuit c(5, 3, {3});
+    // z selection is index-based (gelý 4n+1 per ADR 0005): for n=1,
+    // 4n+1 = 5, so wire 5 is the extra-ancilla z. The circuit has 6 wires.
+    Circuit c(6, 3, {3});
     c.add_gate(std::make_unique<ToffoliGate>(0, 1, 3));
     c.add_gate(std::make_unique<ToffoliGate>(0, 2, 3));
     c.add_gate(std::make_unique<ToffoliGate>(1, 2, 3));
@@ -201,7 +201,7 @@ static void test_r2_hand_built_window() {
     CHECK(c.gate_count()     == before_gates + 2);
     CHECK(count_toffoli(c)   == before_toffoli);   // unchanged
     CHECK(count_cnot(c)      == before_cnot + 2);
-    CHECK(c.num_wires()      == 5);   // no new wires
+    CHECK(c.num_wires()      == 6);   // no new wires
 
     // Functional equivalence: T ⊕= maj(0,1,2) in all cases.
     // maj(a,b,c) = majority of 3 bits.
@@ -216,16 +216,17 @@ static void test_r2_hand_built_window() {
                 CHECK(out[0] == maj);
             }
 
-    // z (wire 4) must be 0 after every evaluation (restored).
+    // z (wire 5) must be 0 after every evaluation (restored).
     // (Already checked by check_ancilla_invariant below.)
     CHECK(check_ancilla_invariant(c));
 }
 
 // ---------------------------------------------------------------------------
 // #5. R2 bare-adder hit counts with extra_ancilla >= 1.
-//     R1 runs first, then R2. Actual r2 hits depend on how many 3-Toffoli
-//     windows survive R1 (some carry windows overlap with R1-expanded gates).
-//     Key invariant: r2 > 0 when extra_ancilla >= 1; TT and ancilla PASS.
+//     R1 runs first, then R2. On the bare adder (no sandwich), R1 consumes
+//     some carry windows, so r2 == n (2 for n=2, 4 for n=4) — deterministic
+//     (no RNG). This differs from the ADR's R2-standalone count (2n-1) because
+//     R1 runs in the same pass. Gold standard: r2 == n, TT + ancilla PASS.
 // ---------------------------------------------------------------------------
 static void test_r2_bare_adder_hit_counts() {
     LocalReplaceConfig cfg;
@@ -236,7 +237,8 @@ static void test_r2_bare_adder_hit_counts() {
         Circuit c = make_nbit_adder(2, 1);
         ReplaceResult r = apply_local_replace(c, cfg, rng);
         CHECK(r.r1_hits == 2);
-        CHECK(r.r2_hits > 0);   // at least one R2 window found
+        CHECK(r.r2_hits == 2);   // deterministic: r2 == n on the bare adder
+        CHECK(r.total() == 4);
         CHECK(check_truth_table(c));
         CHECK(check_ancilla_invariant(c));
     }
@@ -244,7 +246,8 @@ static void test_r2_bare_adder_hit_counts() {
         Circuit c = make_nbit_adder(4, 1);
         ReplaceResult r = apply_local_replace(c, cfg, rng);
         CHECK(r.r1_hits == 4);
-        CHECK(r.r2_hits > 0);
+        CHECK(r.r2_hits == 4);   // deterministic: r2 == n on the bare adder
+        CHECK(r.total() == 8);
         CHECK(check_truth_table(c));
         CHECK(check_ancilla_invariant(c));
     }

@@ -102,22 +102,20 @@ ReplaceResult apply_local_replace(Circuit& circuit, const LocalReplaceConfig& cf
 
     // ---- Pass 2: R2 (carry-majority 3-Toffoli windows) ----
     if (cfg.enable_r2) {
-        // z = first extra-ancilla wire: last non-output wire that no existing
-        // gate targets (guaranteed zero throughout execution). Scanning from the
-        // end picks the highest-indexed safe wire, which for the VBE adder is
-        // an extra-ancilla wire (index >= 4n+1). For hand-built test circuits
-        // it picks any unused wire. If none exists, z stays -1.
-        const auto& outs = circuit.output_wires();
-        const auto& gates = circuit.gates_ref();
-        const int num_w = circuit.num_wires();
+        // z = first extra-ancilla wire (index >= 4n+1), per ADR 0005 Decision 3.
+        // The VBE adder layout places extra_ancilla wires at [4n+1 .. 4n+extra],
+        // after the working-carry wires [3n+2 .. 4n]. These are pre-declared
+        // zero-ancilla wires the adder never writes; sandwich may target them
+        // (Safe mode CNOTs / Active mode F⁻¹∘F), so "untargeted" is NOT a valid
+        // selector. Index-based selection is robust across sandwich modes.
+        // n = (num_inputs - 1) / 2 for the VBE adder (2n+1 inputs).
+        int n = (circuit.num_inputs() - 1) / 2;
+        int extra_base = 4 * n + 1;   // 4n+1
         int z = -1;
-        for (int w = num_w - 1; w >= circuit.num_inputs(); --w) {
+        for (int w = extra_base; w < circuit.num_wires(); ++w) {
+            const auto& outs = circuit.output_wires();
             bool is_out = std::find(outs.begin(), outs.end(), w) != outs.end();
-            if (is_out) continue;
-            bool is_targeted = false;
-            for (const auto& g : gates)
-                if (g->target_wire() == w) { is_targeted = true; break; }
-            if (!is_targeted) { z = w; break; }
+            if (!is_out) { z = w; break; }
         }
 
         if (z >= 0) {

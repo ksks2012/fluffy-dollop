@@ -125,7 +125,7 @@ PipelineResult run_full_pipeline(const PipelineConfig& cfg) {
         });
     }
 
-    // Phase 2 — local replacement (R1): single-pass, fixed rewrite.
+    // Phase 2 — local replacement (R1 + optional R2): single-pass, fixed rewrite.
     // Runs BEFORE shuffle: shuffle reorders gates within each depth level, and
     // the three S-CNOTs of an R1 window are serially dependent (all write s,
     // so they sit at different depths), so shuffle would interleave unrelated
@@ -133,6 +133,7 @@ PipelineResult run_full_pipeline(const PipelineConfig& cfg) {
     // relies on. Replacing while the structure is still tight keeps hits == n.
     if (cfg.enable_replace) {
         LocalReplaceConfig replace_cfg;
+        replace_cfg.enable_r2 = cfg.enable_replace_r2;
         ReplaceResult rr = apply_local_replace(circuit, replace_cfg, rng);
         phases.push_back({
             "replace",
@@ -140,7 +141,9 @@ PipelineResult run_full_pipeline(const PipelineConfig& cfg) {
             circuit.num_wires(),
             static_cast<double>(circuit.gate_count()) / ORIGINAL_GATES,
             check_ancilla_invariant(circuit),
-            rr.total()
+            rr.total(),
+            rr.r1_hits,
+            rr.r2_hits
         });
     }
 

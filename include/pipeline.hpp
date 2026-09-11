@@ -23,8 +23,9 @@ struct PipelineConfig {
     SandwichMode sandwich_mode       = SandwichMode::Active;
     int  sandwich_chain_length       = 8;
 
-    // Phase 2 — local replacement (R1)
+    // Phase 2 — local replacement (R1 + optional R2)
     bool enable_replace       = true;
+    bool enable_replace_r2    = false;  // R2 carry-majority pass (default off)
 
     // Phase 3 — shuffle
     bool enable_shuffle       = true;
@@ -43,7 +44,9 @@ struct PhaseStats {
     int  wire_count;
     double overhead;       // gate_count / original_gate_count (adder's gate count)
     bool ancilla_ok;       // all non-output ancilla wires = 0 for all inputs
-    int  replacements = 0; // windows replaced (0 for every phase except `replace`)
+    int  replacements = 0; // total windows replaced (R1 + R2)
+    int  replacements_r1 = 0; // R1 (S-triple) replacements
+    int  replacements_r2 = 0; // R2 (carry-majority) replacements
 };
 
 // ---------------------------------------------------------------------------

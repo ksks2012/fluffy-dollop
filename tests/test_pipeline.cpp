@@ -434,6 +434,113 @@ static void test_pipeline_4bit_overhead_baseline() {
         CHECK(p.overhead >= 1.0);
 }
 
+// ===========================================================================
+// Ticket 0021: R2 pipeline integration
+// ===========================================================================
+
+// enable_replace_r2 defaults to false (R1-only behavior unchanged).
+static void test_pipeline_r2_default_off() {
+    PipelineConfig cfg;
+    CHECK(cfg.enable_replace_r2 == false);
+}
+
+// R2 on: bare adder n=2, extra_ancilla=4, Safe sandwich.
+// R1 hits should be 2, R2 hits > 0, TT + ancilla PASS at every boundary.
+static void test_pipeline_r2_bare_adder_n2() {
+    PipelineConfig cfg;
+    cfg.n = 2;
+    cfg.extra_ancilla = 4;
+    cfg.enable_replace_r2 = true;
+    cfg.sandwich_mode = SandwichMode::Safe;
+    auto r = run_full_pipeline(cfg);
+    CHECK(check_truth_table(r.circuit));
+    for (const auto& p : r.phases) CHECK(p.ancilla_ok);
+    const PhaseStats* replace = nullptr;
+    for (const auto& p : r.phases)
+        if (p.name == "replace") { replace = &p; break; }
+    CHECK(replace != nullptr);
+    if (replace) {
+        CHECK(replace->replacements_r1 == 2);
+        CHECK(replace->replacements_r2 > 0);
+        CHECK(replace->replacements == replace->replacements_r1 + replace->replacements_r2);
+    }
+}
+
+// R2 on: bare adder n=4, extra_ancilla=4, Safe sandwich.
+static void test_pipeline_r2_bare_adder_n4() {
+    PipelineConfig cfg;
+    cfg.n = 4;
+    cfg.extra_ancilla = 4;
+    cfg.enable_replace_r2 = true;
+    cfg.sandwich_mode = SandwichMode::Safe;
+    auto r = run_full_pipeline(cfg);
+    CHECK(check_truth_table(r.circuit));
+    for (const auto& p : r.phases) CHECK(p.ancilla_ok);
+    const PhaseStats* replace = nullptr;
+    for (const auto& p : r.phases)
+        if (p.name == "replace") { replace = &p; break; }
+    CHECK(replace != nullptr);
+    if (replace) {
+        CHECK(replace->replacements_r1 == 4);
+        CHECK(replace->replacements_r2 > 0);
+        CHECK(replace->replacements == replace->replacements_r1 + replace->replacements_r2);
+    }
+}
+
+// R2 on: extra_ancilla=0, no sandwich (needs extra ancilla).
+// R2 should report 0 hits, TT + ancilla PASS.
+static void test_pipeline_r2_no_extra_ancilla() {
+    PipelineConfig cfg;
+    cfg.n = 4;
+    cfg.extra_ancilla = 0;
+    cfg.enable_replace_r2 = true;
+    cfg.enable_sandwich = false;
+    auto r = run_full_pipeline(cfg);
+    CHECK(check_truth_table(r.circuit));
+    for (const auto& p : r.phases) CHECK(p.ancilla_ok);
+    const PhaseStats* replace = nullptr;
+    for (const auto& p : r.phases)
+        if (p.name == "replace") { replace = &p; break; }
+    CHECK(replace != nullptr);
+    if (replace) {
+        CHECK(replace->replacements_r1 == 4);
+        CHECK(replace->replacements_r2 == 0);
+    }
+}
+
+// R2 on vs off (default): R1 hits identical, r2 differs (on → >0, off → 0).
+static void test_pipeline_r2_off_same_as_r1_only() {
+    PipelineConfig on  = default_cfg();
+    on.enable_replace_r2 = true;
+    PipelineConfig off = default_cfg();
+    off.enable_replace_r2 = false;
+    auto r_on  = run_full_pipeline(on);
+    auto r_off = run_full_pipeline(off);
+
+    const PhaseStats* rep_on = nullptr;
+    const PhaseStats* rep_off = nullptr;
+    for (const auto& p : r_on.phases)  if (p.name == "replace") { rep_on  = &p; break; }
+    for (const auto& p : r_off.phases) if (p.name == "replace") { rep_off = &p; break; }
+    CHECK(rep_on != nullptr && rep_off != nullptr);
+    if (rep_on && rep_off) {
+        CHECK(rep_on->replacements_r1 == rep_off->replacements_r1);
+        CHECK(rep_on->replacements_r2 > 0);    // R2 on → r2 > 0
+        CHECK(rep_off->replacements_r2 == 0);  // R2 off (default) → r2 = 0
+        CHECK(rep_on->replacements == rep_on->replacements_r1 + rep_on->replacements_r2);
+        CHECK(rep_off->replacements == rep_off->replacements_r1);
+    }
+}
+
+// --no-replace disables the entire phase (R1 + R2).
+static void test_pipeline_no_replace_disables_r2() {
+    PipelineConfig cfg;
+    cfg.enable_replace = false;
+    cfg.enable_replace_r2 = true;  // should be ignored when enable_replace=false
+    auto r = run_full_pipeline(cfg);
+    for (const auto& p : r.phases)
+        CHECK(p.name != "replace");
+}
+
 // ---------------------------------------------------------------------------
 int main() {
     test_pipeline_phase_count_full();
@@ -473,6 +580,14 @@ int main() {
     test_pipeline_4bit_wire_budget();
     test_pipeline_4bit_adder_gate_count();
     test_pipeline_4bit_overhead_baseline();
+
+    // Ticket 0021: R2 pipeline integration
+    test_pipeline_r2_default_off();
+    test_pipeline_r2_bare_adder_n2();
+    test_pipeline_r2_bare_adder_n4();
+    test_pipeline_r2_no_extra_ancilla();
+    test_pipeline_r2_off_same_as_r1_only();
+    test_pipeline_no_replace_disables_r2();
 
     if (s_failed == 0)
         std::cout << "All " << s_run << " tests passed.\n";
