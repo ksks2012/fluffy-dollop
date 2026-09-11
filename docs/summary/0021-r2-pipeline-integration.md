@@ -49,3 +49,14 @@
   must be rewritten to the measured bare-adder gold standard (r1=2,r2=2,total=4 / r1=4,r2=4,total=8).
 - **0022 (per-phase structural metrics)**: ADR 0005 Decision 4 (`depth_levels`, count_not/cnot/
   toffoli at every boundary) is that ticket's scope, not 0021's.
+
+## Post-hoc note: Active sandwich gap (ticket 0024)
+
+While validating R2, the default (`Active`) sandwich was found to violate the truth table and the
+ancilla invariant at the sandwich boundary — a pre-existing defect (reproduced at committed HEAD
+`2820b25`, before any R2 work). Root cause: ADR 0002's `F⁻¹ ∘ Adder ∘ F ≡ Adder` is false for CNOT
+chains touching computation wires (conjugation does not preserve a non-linear circuit); earlier tests
+only checked TT under Safe mode. Fixed in ticket 0024: default `sandwich_mode` is now **Safe**
+(equivalence-guaranteed), Active is demoted to experimental with pinned KNOWN-BROKEN regression
+tests, ADR 0002 amended. All R2 correctness assertions already ran under Safe, so R2 logic is
+unaffected.

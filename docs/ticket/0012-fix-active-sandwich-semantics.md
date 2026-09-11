@@ -4,9 +4,14 @@
 
 Note: the source of truth for Active semantics is ADR 0002 (all wires). The current implementation, its header comment, and the glossary entry that say "control = inputs / target = outputs" are a deviation and must be corrected — not the ADR.
 
-**Blocked by:** None — can start immediately.
+**Blocked by:** Ticket 0024 (Active sandwich functional-equivalence gap). The all-wires selection
+described here was already implemented, but the same defect diagnosed in 0024 applies: an all-wires
+Active chain does NOT preserve the truth table / ancilla invariant, so this ticket's acceptance
+criteria "preserves the exhaustive 2-bit truth table" and "ancilla invariant under Active mode" are
+NOT satisfiable until Active is redesigned to be conjugation-sound (separate deferred ticket).
+Re-spec this ticket against that redesign.
 
-**Status:** ready-for-agent
+**Status:** blocked-by-0024
 
 - [ ] Active mode builds its control/target pools from all current circuit wires `[0, num_wires())`, enforcing `ctrl != tgt`, and does not call `extend_wires`
 - [ ] Active mode no longer restricts control wires to primary inputs or target wires to primary outputs

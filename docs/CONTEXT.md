@@ -43,11 +43,11 @@ The **4-bit ripple-carry adder** (33 gates, 21 wires, 512-input truth table) is 
 
 ### Phase 2: Hardening
 - Primary technique: **Sandwiching** (`apply_sandwich` in `sandwich.hpp`).
-- Insert random CNOT chains (slice gates) before and after critical sections.  Applying the same pairs in reverse order after the circuit forms the `F⁻¹ ∘ Adder ∘ F` structure that guarantees functional equivalence.
+- Insert random CNOT chains (slice gates) before and after critical sections.  Applying the same pairs in reverse order after the circuit forms the `F⁻¹ ∘ Adder ∘ F` structure.
 - Two wire-selection modes are supported (see `SandwichMode` in `sandwich.hpp` and `docs/adr/0002-active-sandwiching-mode.md`):
-  - **Safe mode** — wires drawn from zero-initialized extra ancilla only; every chain gate is a no-op. Useful for isolated testing of downstream phases.
-  - **Active mode** *(pipeline default)* — control and target wires drawn from **all** current circuit wires `[0, num_wires())` with `ctrl ≠ tgt`.  The chain does not extend the wire count.  Intermediate wire values are genuinely scrambled during execution; the `F⁻¹ ∘ Adder ∘ F` structure preserves the zero-ancilla invariant at every phase boundary.
-- `PipelineConfig::sandwich_mode` defaults to `SandwichMode::Active`; pass `--sandwich-mode=safe` on the CLI to switch.
+  - **Safe mode** *(pipeline default, ticket 0024)* — wires drawn from zero-initialized extra ancilla only; every chain gate is a no-op (`F ≡ I` on the computation path), so functional equivalence is guaranteed by construction. Used by all correctness assertions.
+  - **Active mode** *(experimental)* — control and target wires drawn from **all** current circuit wires `[0, num_wires())` with `ctrl ≠ tgt`.  The chain does not extend the wire count. KNOWN DEFECT (ticket 0024): `F⁻¹ ∘ Adder ∘ F ≢ Adder` for chains touching computation wires (conjugation does not preserve a non-linear circuit) — truth table and the zero-ancilla invariant FAIL. Do not use for equivalence-guaranteed runs; awaiting a conjugation-sound redesign in a separate deferred ticket.
+- `PipelineConfig::sandwich_mode` defaults to `SandwichMode::Safe`; `--sandwich-mode=active` switches to the experimental mode (CLI prints a warning).
 
 ### Phase 3: Mixing (Simplified)
 
