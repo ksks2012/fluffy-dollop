@@ -4,33 +4,34 @@
 #include "circuit.hpp"
 
 // ---------------------------------------------------------------------------
-// LocalReplaceConfig — phase configuration for local replacement.
-// Reserved for second-version knobs (replace_max, multi-round, identity
-// drawing).  v1 keeps this minimal: the single R1 pattern always replaces
-// every matched window exactly once, so the config currently carries nothing.
+// ReplaceResult — returned by apply_local_replace, holds per-pattern hits.
 // ---------------------------------------------------------------------------
-struct LocalReplaceConfig {
+struct ReplaceResult {
+    int r1_hits = 0;   // R1 (S-triple) replacements
+    int r2_hits = 0;   // R2 (carry-majority 3-Toffoli) replacements
+    int total() const { return r1_hits + r2_hits; }
 };
 
 // ---------------------------------------------------------------------------
-// apply_local_replace — single-pass, in-place local replacement (R1, ticket 0017)
-//
-// Scans the circuit's topological gate sequence for the R1 window pattern and
-// replaces each match in place with the R1 equivalent sub-circuit:
-//
-//   Window  : CNOT(a,s); CNOT(b,s); CNOT(c,s)       (3 strictly-adjacent CNOTs)
-//             - same target wire s, pairwise-distinct controls a,b,c
-//   Replace : Toffoli(a,b,s); CNOT(a,s); CNOT(b,s); CNOT(c,s); Toffoli(a,b,s)
-//
-// Net effect is `s ⊕= a ⊕ b ⊕ c` for both writings (the two Toffoli contribute
-// `a∧b` and cancel), so the window's external interface is unchanged.
-//
-// Scanning is single-pass and non-overlapping: after a replacement, scanning
-// resumes *after* the new sub-circuit so no matched span is rescanned.
-//
-// v1 uses the fixed R1 rewrite only — `rng` is retained solely to keep the
-// signature uniform with the other pipeline phases and is not used.
-//
-// Returns the number of replacements made (hit count).
+// LocalReplaceConfig — phase configuration for local replacement.
 // ---------------------------------------------------------------------------
-int apply_local_replace(Circuit& circuit, const LocalReplaceConfig& cfg, std::mt19937& rng);
+struct LocalReplaceConfig {
+    bool enable_r2 = false;   // enable R2 carry-majority pass (default off)
+};
+
+// ---------------------------------------------------------------------------
+// apply_local_replace — two-pass, in-place local replacement (R1 + R2).
+//
+// Pass 1 (R1): S-triple (3x CNOT, same target s, distinct controls a,b,c)
+//   → Toffoli(a,b,s); CNOT(a,s); CNOT(b,s); CNOT(c,s); Toffoli(a,b,s)
+//   Net: s ⊕= a⊕b⊕c; adds 2 Toffoli per hit; 0 ancilla wires.
+//
+// Pass 2 (R2): carry-majority 3-Toffoli (same target T, 3 distinct controls)
+//   → CNOT(a,z); Toffoli(b,z,T); Toffoli(ci,z,T); Toffoli(b,ci,T); CNOT(a,z)
+//   Net: T ⊕= maj(a,b,ci); adds 2 CNOT per hit; borrows z (restored).
+//   z = first extra-ancilla wire (index >= 4n+1), selected once at pass start.
+//   If no extra-ancilla wire exists, R2 reports zero hits.
+//
+// Both passes are single-pass, non-overlapping. R1 runs fully first, then R2.
+// ---------------------------------------------------------------------------
+ReplaceResult apply_local_replace(Circuit& circuit, const LocalReplaceConfig& cfg, std::mt19937& rng);

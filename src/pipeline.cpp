@@ -133,14 +133,14 @@ PipelineResult run_full_pipeline(const PipelineConfig& cfg) {
     // relies on. Replacing while the structure is still tight keeps hits == n.
     if (cfg.enable_replace) {
         LocalReplaceConfig replace_cfg;
-        int hits = apply_local_replace(circuit, replace_cfg, rng);
+        ReplaceResult rr = apply_local_replace(circuit, replace_cfg, rng);
         phases.push_back({
             "replace",
             circuit.gate_count(),
             circuit.num_wires(),
             static_cast<double>(circuit.gate_count()) / ORIGINAL_GATES,
             check_ancilla_invariant(circuit),
-            hits
+            rr.total()
         });
     }
 
