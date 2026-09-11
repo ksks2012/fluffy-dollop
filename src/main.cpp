@@ -21,6 +21,9 @@ static void print_phase(const PhaseStats& p) {
         else
             std::cout << "  hits=" << p.replacements;
     }
+    std::cout << "  depth=" << p.depth_levels
+              << " toffoli=" << p.count_toffoli
+              << " cnot=" << p.count_cnot;
     std::cout << "\n";
 }
 
@@ -37,6 +40,7 @@ int main(int argc, char* argv[]) {
 
     PipelineConfig cfg;
     int bits_arg = cfg.n;          // default from PipelineConfig (2)
+    bool verbose_metrics = false;  // --verbose-metrics (ticket 0022)
 
     for (int i = 1; i < argc; ++i) {
         std::string arg(argv[i]);
@@ -49,13 +53,16 @@ int main(int argc, char* argv[]) {
             std::string m = arg.substr(16);
             if      (m == "active") cfg.sandwich_mode = SandwichMode::Active;
             else if (m == "safe")   cfg.sandwich_mode = SandwichMode::Safe;
-            // else: unrecognised value ignored; default (Active) kept
+            // else: unrecognised value ignored; default (Safe) kept (ticket 0024)
         }
         else if (arg.substr(0, 7) == "--bits=") {
             bits_arg = std::stoi(arg.substr(7));
         }
         else if (arg.substr(0, 16) == "--extra-ancilla=") {
             cfg.extra_ancilla = std::stoi(arg.substr(16));
+        }
+        else if (arg == "--verbose-metrics") {
+            verbose_metrics = true;
         }
         // --no-sandwich takes precedence over --sandwich-mode
     }
@@ -78,10 +85,15 @@ int main(int argc, char* argv[]) {
               << (cfg.enable_shuffle  ? " shuffle"  : "")
               << (cfg.enable_inject   ? " inject"   : "")
               << "\n";
-    if (cfg.enable_sandwich)
+    if (cfg.enable_sandwich) {
         std::cout << "Sandwich mode: "
                   << (cfg.sandwich_mode == SandwichMode::Active ? "active" : "safe")
                   << "\n";
+        if (cfg.sandwich_mode == SandwichMode::Active)
+            std::cout << "  WARNING: Active sandwich does NOT guarantee truth-table / ancilla "
+                      << "equivalence (known defect — see ADR 0002 amend, ticket 0024).\n"
+                      << "  Use --sandwich-mode=safe for guaranteed TT.\n";
+    }
 
     // -------------------------------------------------------------------------
     // Depth analysis on the base adder (no extra ancilla, no pipeline phases).
@@ -106,6 +118,19 @@ int main(int argc, char* argv[]) {
 
     auto result = run_full_pipeline(cfg);
     for (const auto& p : result.phases) print_phase(p);
+
+    // Ticket 0022: --verbose-metrics prints per-depth histogram of the final circuit
+    if (verbose_metrics) {
+        const auto depths = result.circuit.compute_depth_levels();
+        int maxd = depths.empty() ? 0 : *std::max_element(depths.begin(), depths.end());
+        std::vector<int> per_level(maxd + 1, 0);
+        for (int d : depths) ++per_level[d];
+        std::cout << "\nGates per depth (final circuit):\n";
+        for (int lvl = 1; lvl <= maxd; ++lvl)
+            if (per_level[lvl] > 0)
+                std::cout << "  depth " << std::setw(2) << lvl
+                          << " : " << std::setw(3) << per_level[lvl] << " gate(s)\n";
+    }
 
     bool tt_ok = check_truth_table(result.circuit);
     const int n_inputs = result.circuit.num_inputs();

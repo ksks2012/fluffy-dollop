@@ -223,20 +223,52 @@ static void test_pipeline_different_seeds() {
 }
 
 // ---------------------------------------------------------------------------
-// Ticket 0010: default sandwich_mode is Active
+// Ticket 0024: default sandwich_mode is Safe (equivalence-guaranteed path).
+// Active is demoted to experimental (known truth-table / ancilla gap).
 // ---------------------------------------------------------------------------
-static void test_pipeline_default_mode_is_active() {
+static void test_pipeline_default_mode_is_safe() {
     PipelineConfig cfg;
-    CHECK(cfg.sandwich_mode == SandwichMode::Active);
+    CHECK(cfg.sandwich_mode == SandwichMode::Safe);
 }
 
 // ---------------------------------------------------------------------------
-// Ticket 0010 / 0012: Active mode (all-wires) genuinely scrambles the function
-// (at least some outputs differ from plain adder) and preserves the ancilla
-// invariant at every phase boundary.
+// Ticket 0024, KNOWN-BROKEN pin: Active mode does NOT preserve the truth table
+// (F⁻¹ ∘ Adder ∘ F ≢ Adder for chains touching computation wires), and at
+// least one phase boundary reports ancilla_ok == false (deterministic, seed 42).
+// This assert must flip to expect PASS ONLY when Active is redesigned to be
+// conjugation-sound (separate deferred ticket).
+// ---------------------------------------------------------------------------
+static void test_pipeline_active_known_broken_truth_table_pinned() {
+    PipelineConfig cfg;
+    cfg.sandwich_mode = SandwichMode::Active;
+    auto r = run_full_pipeline(cfg);
+
+    bool any_ancilla_fail = false;
+    for (const auto& p : r.phases) if (!p.ancilla_ok) { any_ancilla_fail = true; break; }
+    CHECK(!check_truth_table(r.circuit));   // KNOWN-BROKEN: Active must NOT be TT-equivalent
+    CHECK(any_ancilla_fail);                // and the ancilla invariant must break at a boundary
+}
+
+// ---------------------------------------------------------------------------
+// Ticket 0024 pin: Safe mode preserves the truth table AND the ancilla invariant
+// at every phase boundary — anchors Safe as the equivalence-guaranteed path.
+// ---------------------------------------------------------------------------
+static void test_pipeline_safe_preserves_truth_table_and_ancilla() {
+    PipelineConfig cfg;
+    cfg.sandwich_mode = SandwichMode::Safe;   // explicit (default is Safe); assert still forced
+    auto r = run_full_pipeline(cfg);
+    CHECK(check_truth_table(r.circuit));
+    for (const auto& p : r.phases) CHECK(p.ancilla_ok);
+}
+
+// ---------------------------------------------------------------------------
+// Ticket 0010 / 0012 (updated by 0024): Active mode (all-wires) genuinely
+// scrambles the function — this DOCUMENTS the defect, it is not an equivalence
+// claim. Forced to Active explicitly.
 // ---------------------------------------------------------------------------
 static void test_pipeline_active_mode_scrambles() {
-    PipelineConfig cfg;  // default: sandwich_mode=Active
+    PipelineConfig cfg;
+    cfg.sandwich_mode = SandwichMode::Active;  // explicit; Active is experimental (0024)
     auto r = run_full_pipeline(cfg);
 
     // At least one of the 32 outputs must differ from the plain adder
@@ -256,7 +288,8 @@ static void test_pipeline_active_mode_scrambles() {
 // Ticket 0010: end-to-end pipeline with Active mode passes ancilla invariant
 // ---------------------------------------------------------------------------
 static void test_pipeline_active_mode_ancilla_invariant() {
-    // Active mode ancilla is seed-dependent (ticket 0012); use Safe for this check
+    // Ancilla invariant is only asserted for the equivalence-guaranteed path.
+    // Active breaks it (ticket 0024) — this check runs under Safe.
     PipelineConfig cfg;
     cfg.sandwich_mode = SandwichMode::Safe;
     auto r = run_full_pipeline(cfg);
@@ -395,9 +428,12 @@ static void test_pipeline_4bit_ancilla_invariant() {
         CHECK(p.ancilla_ok);
 }
 
-// Active sandwich on 4-bit genuinely scrambles outputs.
+// Active sandwich on 4-bit genuinely scrambles outputs — documents the 0024
+// defect; forced to Active explicitly (do not rely on the default).
 static void test_pipeline_4bit_active_scrambles() {
-    auto r = run_full_pipeline(make_4bit_cfg());
+    auto cfg = make_4bit_cfg();
+    cfg.sandwich_mode = SandwichMode::Active;  // explicit; Active is experimental (0024)
+    auto r = run_full_pipeline(cfg);
     auto plain = make_nbit_adder(4, 0);
     int diffs = 0;
     for (int bits = 0; bits < (1 << 9); ++bits) {  // 2^(2*4+1) = 512 inputs
@@ -542,6 +578,79 @@ static void test_pipeline_no_replace_disables_r2() {
 }
 
 // ---------------------------------------------------------------------------
+// Ticket 0022: per-phase structural metrics
+//
+// Done-gate numbers corrected per measurement (ADR 0005 table was R2-standalone
+// and did not survive R1-first): max topological depth is 8 (n=2) / 16 (n=4);
+// after R1+R2 with R1 running first, r2 == n, so toffoli/cnot deltas are +2n.
+// ---------------------------------------------------------------------------
+
+// Adder phase (bare-equivalent, before any downstream phase): exact structural
+// counts for n=2 and n=4.
+static void test_pipeline_metrics_adder_phase() {
+    auto r = run_full_pipeline(default_cfg());   // n=2, Safe default
+    const PhaseStats& a = r.phases[0];            // adder phase
+    CHECK(a.depth_levels   == 8);
+    CHECK(a.count_toffoli  == 9);
+    CHECK(a.count_cnot     == 6);
+    CHECK(a.count_not      == 0);
+
+    auto r4 = run_full_pipeline(make_4bit_cfg()); // n=4
+    const PhaseStats& a4 = r4.phases[0];
+    CHECK(a4.depth_levels  == 16);
+    CHECK(a4.count_toffoli == 21);
+    CHECK(a4.count_cnot    == 12);
+    CHECK(a4.count_not     == 0);
+}
+
+// At every phase boundary the metric fields are filled and partition the gate
+// count: toffoli + cnot + not == gate_count, and depth_levels > 0.
+static void test_pipeline_metrics_partition_at_every_boundary() {
+    auto r = run_full_pipeline(default_cfg());
+    for (const auto& p : r.phases) {
+        CHECK(p.depth_levels > 0);
+        CHECK(p.count_toffoli + p.count_cnot + p.count_not == p.gate_count);
+    }
+}
+
+// Bare R1+R2 (no sandwich), extra_ancilla=1: exact toffoli / cnot / depth /
+// r1 / r2 at the replace boundary; TT PASS.
+static void test_pipeline_metrics_after_r1_r2() {
+    for (int n : {2, 4}) {
+        PipelineConfig cfg;
+        cfg.n              = n;
+        cfg.extra_ancilla  = 1;
+        cfg.enable_sandwich = false;
+        cfg.enable_shuffle  = false;
+        cfg.enable_inject   = false;
+        cfg.enable_replace  = true;
+        cfg.enable_replace_r2 = true;
+        auto r = run_full_pipeline(cfg);
+
+        const PhaseStats* rep = nullptr;
+        for (const auto& p : r.phases)
+            if (p.name == "replace") { rep = &p; break; }
+        CHECK(rep != nullptr);
+        if (rep) {
+            CHECK(rep->replacements_r1 == n);
+            CHECK(rep->replacements_r2 == n);         // R1-first: r2 == n, not 2n−1
+            CHECK(rep->replacements == 2 * n);
+            CHECK(rep->count_not == 0);
+            if (n == 2) {
+                CHECK(rep->count_toffoli == 13);      // 9 + 2*2 (R1)
+                CHECK(rep->count_cnot    == 10);      // 6 + 2*2 (R2)
+                CHECK(rep->depth_levels  == 11);
+            } else {
+                CHECK(rep->count_toffoli == 29);      // 21 + 2*4 (R1)
+                CHECK(rep->count_cnot    == 20);      // 12 + 2*4 (R2)
+                CHECK(rep->depth_levels  == 23);
+            }
+        }
+        CHECK(check_truth_table(r.circuit));
+    }
+}
+
+// ---------------------------------------------------------------------------
 int main() {
     test_pipeline_phase_count_full();
     test_pipeline_phase_names();
@@ -561,7 +670,10 @@ int main() {
     test_pipeline_no_inject();
     test_pipeline_adder_only();
     test_pipeline_different_seeds();
-    test_pipeline_default_mode_is_active();
+    // Ticket 0024: default is Safe; Active pinned as KNOWN-BROKEN
+    test_pipeline_default_mode_is_safe();
+    test_pipeline_active_known_broken_truth_table_pinned();
+    test_pipeline_safe_preserves_truth_table_and_ancilla();
     test_pipeline_active_mode_scrambles();
     test_pipeline_active_mode_ancilla_invariant();
     test_pipeline_no_sandwich_beats_mode();
@@ -588,6 +700,11 @@ int main() {
     test_pipeline_r2_no_extra_ancilla();
     test_pipeline_r2_off_same_as_r1_only();
     test_pipeline_no_replace_disables_r2();
+
+    // Ticket 0022: per-phase structural metrics
+    test_pipeline_metrics_adder_phase();
+    test_pipeline_metrics_partition_at_every_boundary();
+    test_pipeline_metrics_after_r1_r2();
 
     if (s_failed == 0)
         std::cout << "All " << s_run << " tests passed.\n";

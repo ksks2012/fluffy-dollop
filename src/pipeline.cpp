@@ -4,6 +4,7 @@
 #include "shuffle.hpp"
 #include "inject_junk.hpp"
 #include "local_replace.hpp"
+#include "gate.h"
 #include <algorithm>
 #include <random>
 
@@ -63,6 +64,52 @@ bool check_ancilla_invariant(Circuit& c) {
 }
 
 // ---------------------------------------------------------------------------
+// measure_structural — per-phase structural metrics (ticket 0022), computed at
+// the same timing as check_ancilla_invariant (immediately after each phase).
+// ---------------------------------------------------------------------------
+struct PhaseMetrics {
+    int depth_levels;
+    int count_cnot;
+    int count_toffoli;
+    int count_not;
+};
+
+static PhaseMetrics measure_structural(const Circuit& c) {
+    const auto& gs = c.gates_ref();
+    int cn = 0, ct = 0, nc = 0;
+    for (const auto& g : gs) {
+        if (dynamic_cast<const CnotGate*>(g.get()))        ++cn;
+        else if (dynamic_cast<const ToffoliGate*>(g.get())) ++ct;
+        else if (dynamic_cast<const NotGate*>(g.get()))    ++nc;
+    }
+    const auto depths = c.compute_depth_levels();
+    int maxd = depths.empty() ? 0 : *std::max_element(depths.begin(), depths.end());
+    return {maxd, cn, ct, nc};
+}
+
+// Build a PhaseStats snapshot for the circuit's current state.
+static PhaseStats make_phase_stats(const std::string& name, const Circuit& c,
+                                   int original_gates, bool ancilla_ok,
+                                   int replacements, int replacements_r1,
+                                   int replacements_r2) {
+    PhaseMetrics m = measure_structural(c);
+    PhaseStats s;
+    s.name            = name;
+    s.gate_count      = c.gate_count();
+    s.wire_count      = c.num_wires();
+    s.overhead        = static_cast<double>(c.gate_count()) / original_gates;
+    s.ancilla_ok      = ancilla_ok;
+    s.replacements    = replacements;
+    s.replacements_r1 = replacements_r1;
+    s.replacements_r2 = replacements_r2;
+    s.depth_levels    = m.depth_levels;
+    s.count_cnot      = m.count_cnot;
+    s.count_toffoli   = m.count_toffoli;
+    s.count_not       = m.count_not;
+    return s;
+}
+
+// ---------------------------------------------------------------------------
 // derive_free_ancilla — wires that are: not a primary input, not a primary
 // output, and never the target of any existing gate.  These are safe to use
 // as the Safe-mode sandwich ancilla pool (CNOT chains on them are no-ops
@@ -104,25 +151,17 @@ PipelineResult run_full_pipeline(const PipelineConfig& cfg) {
     const std::vector<int> inject_pool = {inject_base, inject_base+1, inject_base+2};
 
     // Phase 0 — adder (always runs)
-    phases.push_back({
-        "adder",
-        circuit.gate_count(),
-        circuit.num_wires(),
-        1.0,
-        check_ancilla_invariant(circuit)
-    });
+    phases.push_back(make_phase_stats(
+        "adder", circuit, ORIGINAL_GATES, check_ancilla_invariant(circuit),
+        0, 0, 0));
 
     // Phase 1 — sandwich
     if (cfg.enable_sandwich) {
         apply_sandwich(circuit, safe_ancilla, cfg.sandwich_chain_length,
                        cfg.sandwich_mode, rng);
-        phases.push_back({
-            "sandwich",
-            circuit.gate_count(),
-            circuit.num_wires(),
-            static_cast<double>(circuit.gate_count()) / ORIGINAL_GATES,
-            check_ancilla_invariant(circuit)
-        });
+        phases.push_back(make_phase_stats(
+            "sandwich", circuit, ORIGINAL_GATES, check_ancilla_invariant(circuit),
+            0, 0, 0));
     }
 
     // Phase 2 — local replacement (R1 + optional R2): single-pass, fixed rewrite.
@@ -135,40 +174,25 @@ PipelineResult run_full_pipeline(const PipelineConfig& cfg) {
         LocalReplaceConfig replace_cfg;
         replace_cfg.enable_r2 = cfg.enable_replace_r2;
         ReplaceResult rr = apply_local_replace(circuit, replace_cfg, rng);
-        phases.push_back({
-            "replace",
-            circuit.gate_count(),
-            circuit.num_wires(),
-            static_cast<double>(circuit.gate_count()) / ORIGINAL_GATES,
-            check_ancilla_invariant(circuit),
-            rr.total(),
-            rr.r1_hits,
-            rr.r2_hits
-        });
+        phases.push_back(make_phase_stats(
+            "replace", circuit, ORIGINAL_GATES, check_ancilla_invariant(circuit),
+            rr.total(), rr.r1_hits, rr.r2_hits));
     }
 
     // Phase 3 — shuffle
     if (cfg.enable_shuffle) {
         shuffle_depth_levels(circuit, rng);
-        phases.push_back({
-            "shuffle",
-            circuit.gate_count(),
-            circuit.num_wires(),
-            static_cast<double>(circuit.gate_count()) / ORIGINAL_GATES,
-            check_ancilla_invariant(circuit)
-        });
+        phases.push_back(make_phase_stats(
+            "shuffle", circuit, ORIGINAL_GATES, check_ancilla_invariant(circuit),
+            0, 0, 0));
     }
 
     // Phase 4 — inject junk
     if (cfg.enable_inject) {
         inject_junk_gates(circuit, inject_pool, cfg.inject_count, rng);
-        phases.push_back({
-            "inject",
-            circuit.gate_count(),
-            circuit.num_wires(),
-            static_cast<double>(circuit.gate_count()) / ORIGINAL_GATES,
-            check_ancilla_invariant(circuit)
-        });
+        phases.push_back(make_phase_stats(
+            "inject", circuit, ORIGINAL_GATES, check_ancilla_invariant(circuit),
+            0, 0, 0));
     }
 
     return PipelineResult(std::move(circuit), std::move(phases));

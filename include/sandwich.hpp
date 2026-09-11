@@ -16,9 +16,11 @@
 //             [0, num_wires()) with ctrl != tgt.  Does not call extend_wires.
 //             Intermediate wire values are genuinely scrambled: the all-wires
 //             CNOT chain perturbs the adder's working state mid-execution.
-//             The F\u207b\u00b9 \u2218 Adder \u2218 F structure guarantees the ancilla invariant
-//             at the phase boundary; full truth-table preservation depends on
-//             the circuit family (see docs/adr/0002-active-sandwiching-mode.md).
+//             KNOWN DEFECT: F\u207b\u00b9 \u2218 Adder \u2218 F is NOT guaranteed equivalent to
+//             Adder for chains touching computation wires (conjugation does not
+//             preserve a non-linear circuit). EXPERIMENTAL — do not use for
+//             equivalence-guaranteed runs. Default pipeline is Safe (ticket 0024;
+//             ADR 0002 correction).
 // ---------------------------------------------------------------------------
 enum class SandwichMode { Safe, Active };
 

@@ -18,6 +18,9 @@ void apply_sandwich(Circuit& circuit,
     // Safe mode  — both pools = extra_ancilla (all zero-initialized, adder never
     //              touches them).  Every chain gate evaluates as a no-op, so
     //              functional equivalence is trivially preserved.
+    // Active mode — all-wires pool. KNOWN DEFECT (ticket 0024): conjugation by a
+    //              chain touching computation wires does NOT preserve the adder;
+    //              experimental only.
     //
     // Active mode — pool = all current circuit wires [0..num_wires()-1].
     //               ctrl and tgt are drawn from this single pool with ctrl != tgt.

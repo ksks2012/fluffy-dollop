@@ -20,7 +20,9 @@ struct PipelineConfig {
 
     // Phase 1 — sandwich
     bool enable_sandwich             = true;
-    SandwichMode sandwich_mode       = SandwichMode::Active;
+    // Sandwich mode defaults to Safe: Active is known to NOT guarantee
+    // truth-table / ancilla equivalence (ADR 0002 correction; ticket 0024).
+    SandwichMode sandwich_mode       = SandwichMode::Safe;
     int  sandwich_chain_length       = 8;
 
     // Phase 2 — local replacement (R1 + optional R2)
@@ -47,6 +49,10 @@ struct PhaseStats {
     int  replacements = 0; // total windows replaced (R1 + R2)
     int  replacements_r1 = 0; // R1 (S-triple) replacements
     int  replacements_r2 = 0; // R2 (carry-majority) replacements
+    int  depth_levels = 0; // max topological depth (ticket 0022)
+    int  count_cnot = 0;    // number of CnotGate in the circuit
+    int  count_toffoli = 0; // number of ToffoliGate
+    int  count_not = 0;     // number of NotGate (reserved; always 0 today)
 };
 
 // ---------------------------------------------------------------------------
