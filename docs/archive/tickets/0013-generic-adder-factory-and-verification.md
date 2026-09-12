@@ -10,7 +10,7 @@ Equivalence here means functional equivalence (identical I/O truth table) plus t
 
 **Blocked by:** None — can start immediately.
 
-**Status:** ready-for-agent
+**Status:** implemented (make_nbit_adder(n, extra_ancilla) + generalized check_truth_table/check_ancilla_invariant; 2-bit + 4-bit covered)
 
 - [ ] `make_nbit_adder(n, extra_ancilla)` produces the canonical wire layout contract: inputs `[0..n-1] = A_{n-1}..A_0`, `[n..2n-1] = B_{n-1}..B_0`, `[2n] = Cin`; outputs `output_wires() = [S_{n-1}..S_0, Cout]`
 - [ ] Wire count is `4n + 1 + t + extra_ancilla` (inputs `2n+1`, outputs `n+1`, working `(n-1)+t` intermediate carries + optional temp, plus extra); extra_ancilla defaults to 4. For `n=2`, base is 9 wires, matching the existing 2-bit adder

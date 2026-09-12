@@ -1,5 +1,16 @@
 # ADR 0005 — R2 carry-majority replacement + per-phase structural metrics
 
+> **CORRECTION (2026-09-12, ticket 0023):** the "2n−1 hits for R2" figures in the Canonical Rewrite
+> and Core Verification sections assume R2 running **in isolation (R1 disabled)**. In the integrated
+> pipeline R1 always runs first in the same pass, and R2 then hits **`r2 == n`** (2 for n=2, 4 for
+> n=4) on the bare adder — gold standard registered in `test_local_replace.cpp` (`r2 == n` at lines
+> 240/249, "R1-first: r2 == n, not 2n−1"), `test_pipeline.cpp`, and `docs/CONTEXT.md` §2. Combined
+> R1+R2 totals on the bare adder are therefore **2n** (n=2 → 4, n=4 → 8), not `2n−1` / `4+7`. The
+> CLI example line (`hits=4+7 ... toffoli=41 cnot=16`) is illustrative of the *format*, not a real
+> measured run — actual 4-bit Safe measurements show `hits=4+4`, post-replace `toffoli=29 cnot=28`
+> (see `docs/summary/0023-r2-tests-and-docs.md`). R2 standalone-without-R1 hit counts are no longer
+> reproducible via the current API (R1 has no off switch) and should not be treated as a spec.
+
 > Extensions to the local-replacement MVP (ADR 0004): a second rewrite (R2) targeting the carry-majority
 > triple — the first use of the borrow-1-zero-ancilla contract (B) — and lightweight per-phase
 > structural metrics to make depth and gate-type evolution observable at every phase boundary.

@@ -4,7 +4,7 @@
 
 **Blocked by:** 01 (Active sandwich semantics corrected to all wires), 02 (generic `make_nbit_adder` + generalized verification).
 
-**Status:** ready-for-agent
+**Status:** implemented (PipelineConfig n/extra_ancilla; run_full_pipeline on 4-bit; wire pools derived from circuit)
 
 - [ ] `PipelineConfig` exposes `int n = 2;` and `int extra_ancilla = 4;` alongside the existing sandwich mode / chain length / phase toggles
 - [ ] `run_full_pipeline(cfg)` builds the circuit via `make_nbit_adder(cfg.n, cfg.extra_ancilla)` and remains the single pipeline entry (no parallel size-specific entry)

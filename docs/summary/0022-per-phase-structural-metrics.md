@@ -2,7 +2,7 @@
 
 - **Date**: 2026-09-11
 - **Spec/ADR Path**: `docs/adr/0005-r2-carry-replacement-and-metrics.md`
-- **Ticket Path**: `docs/ticket/0022-per-phase-structural-metrics.md`
+- **Ticket Path**: `docs/archive/tickets/0022-per-phase-structural-metrics.md`
 - **Branch**: `main`
 
 ---
@@ -50,7 +50,7 @@
 
 ---
 
-**Next tickets:** `docs/ticket/0023-r2-tests-and-docs.md` — Done gates still cite stale ADR R1+R2
+**Next tickets:** `docs/archive/tickets/0023-r2-tests-and-docs.md` — Done gates still cite stale ADR R1+R2
 totals (`hits=5/11`, r2=3/7); rewrite to the measured bare-adder gold standard (r1=2,r2=2,total=4 /
 r1=4,r2=4,total=8). The deferred "Conjugation-sound Active sandwich" redesign and ticket 0012 remain
 blocked by 0024.

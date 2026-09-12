@@ -2,7 +2,7 @@
 
 **Status:** implemented, all tests green (ctest 8/8)
 **Commits:** 0 unpushed preliminary (uncommitted working tree; builds on commit `81643eb`)
-**Spec:** `docs/ticket/0021-r2-pipeline-integration.md`; canonical: `docs/adr/0005-r2-carry-replacement-and-metrics.md`
+**Spec:** `docs/archive/tickets/0021-r2-pipeline-integration.md`; canonical: `docs/adr/0005-r2-carry-replacement-and-metrics.md`
 
 ## What was built
 

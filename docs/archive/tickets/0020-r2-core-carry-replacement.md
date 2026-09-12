@@ -7,7 +7,7 @@ contract as R1.
 
 **Blocked by:** 0017 (R1 core — this ticket extends the same function).
 
-**Status:** ready-for-agent
+**Status:** implemented (see docs/summary/0020-r2-core-carry-replacement.md; note: R1-first yields r2==n, not ADR 2n−1)
 
 ---
 

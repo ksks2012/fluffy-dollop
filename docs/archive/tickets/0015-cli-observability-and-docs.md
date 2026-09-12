@@ -4,7 +4,7 @@
 
 **Blocked by:** 03 (pipeline supports `n` and `extra_ancilla`; Active semantics corrected by 01).
 
-**Status:** ready-for-agent
+**Status:** implemented (--bits / --extra-ancilla / --sandwich-mode; per-size observability; docs reconciled)
 
 - [ ] CLI accepts `--bits=N` (e.g. `--bits=2`, `--bits=4`) alongside `--extra-ancilla=N` and `--sandwich-mode=...`, defaulting to 2-bit
 - [ ] CLI rejects unsupported `--bits` values (e.g. `3`, `0`, `8`) with a clear error and a non-zero exit, rather than silently ignoring or misbehaving

@@ -3,6 +3,8 @@
 > Spec: bring a deliberately minimal sliver of "generation mixing" into the MVP — replace matched
 > local windows with a single fixed, hand-written, provably-equivalent rewrite (R1). Synthesized
 > from grilling session outcomes (decisions Q1–Q6). Terminology follows `docs/DEFINITION.md`.
+> Canonical R1 spec: `docs/archive/tickets/0016-local-replacement-r1.md` (superseded ticket, retained
+> as the canonical reference; implementation split across archived tickets 0017/0018/0019).
 
 ---
 

@@ -14,7 +14,7 @@ Each transformation slightly confuses and diffuses structural information. After
 Inspired by the design tradition of symmetric cryptography and hash functions (deliberate chaos rather than structured mathematical hardness). It does not rely on elliptic curves, factoring, or lattices.
 
 In the full research vision, the strongest form of mixing replaces small sub-circuits with randomly chosen functionally equivalent alternatives (often precomputed in large tables).  
-This MVP implements a simplified subset: sandwiching, depth-level shuffling, and zero-ancilla junk injection.
+This MVP implements a simplified subset: sandwiching, depth-level shuffling, zero-ancilla junk injection, and two fixed, hand-written local replacements (R1 S-triple, R2 carry-majority — ADR 0004 / ADR 0005).
 
 ### Reversible Circuit
 A logic circuit composed exclusively of invertible gates, so that every output pattern corresponds to exactly one input pattern.  
@@ -47,8 +47,8 @@ A gate (or short chain of gates) inserted during the **sandwiching** step to scr
 In this MVP, slice gates are random CNOT chains.  
 The chain's wire-selection strategy is governed by `SandwichMode`:
 
-- **Safe mode** — control/target wires are drawn exclusively from zero-initialized ancilla wires (`extra_ancilla`).  Every chain gate evaluates as a no-op, so functional equivalence is trivially preserved.  Used for isolated testing of later phases (shuffle, junk injection) where the sandwich must not alter observable wire values.
-- **Active mode** *(default)* — control and target wires are drawn from **all** current circuit wires `[0, num_wires())` with `ctrl ≠ tgt` (see ADR 0002: `docs/adr/0002-active-sandwiching-mode.md`).  The chain never calls `extend_wires`.  Intermediate wire values are genuinely scrambled during execution; the ancilla invariant is preserved at the phase boundary by the `F⁻¹ ∘ Adder ∘ F` cancellation structure.
+- **Safe mode** — control/target wires are drawn exclusively from zero-initialized ancilla wires (`extra_ancilla`).  Every chain gate evaluates as a no-op, so functional equivalence is trivially preserved.  Used for isolated testing of later phases (shuffle, junk injection) where the sandwich must not alter observable wire values. This is the **pipeline default** since ticket 0024.
+- **Active mode** *(experimental — NOT the default)* — control and target wires are drawn from **all** current circuit wires `[0, num_wires())` with `ctrl ≠ tgt` (see ADR 0002: `docs/adr/0002-active-sandwiching-mode.md`).  The chain never calls `extend_wires`.  KNOWN DEFECT (ticket 0024): `F⁻¹ ∘ Adder ∘ F ≢ Adder` for chains touching computation wires — the truth table and the zero-ancilla invariant FAIL. Awaiting a conjugation-sound redesign in a separate deferred ticket; do not use for equivalence-guaranteed runs.
 
 ### Junk Gate
 A redundant gate that does not change the observable input-output behavior of the circuit.  
@@ -79,7 +79,8 @@ The “local” in Local Mixing refers to operating on these limited regions rat
 ### Ripple-Carry Adder
 A binary adder in which the carry-out of each bit position becomes the carry-in of the next.  
 This MVP uses a generic reversible n-bit ripple-carry adder (VBE-style: forward majority-carry chain → XOR sums → reverse-order uncompute) built by `make_nbit_adder(n, extra_ancilla)`.  
-Supported sizes: `n = 2` (15 gates, 9 wires) and `n = 4` (33 gates, 17 wires); formula: `9n-3` gates, `4n+1` base wires.  
+Supported sizes: `n = 2` (15 gates, 9 base wires) and `n = 4` (33 gates, 17 base wires); formula: `9n-3` gates, `4n+1` base wires.  
+With the pipeline default `extra_ancilla = 4` (used throughout the tests and CLI), the 4-bit adder has 17 + 4 = 21 wires; the 2-bit adder uses `make_2bit_adder()` which defaults to `extra_ancilla = 0` (9 wires).  
 The 4-bit instance is the primary validation circuit; the 2-bit instance is the fast regression baseline.
 
 ---
@@ -105,13 +106,15 @@ The core iterative process of Local Mixing: repeatedly select a local region and
 Concrete operations used in this MVP include:  
 - depth-level shuffling,  
 - junk-gate injection,  
-- sandwich CNOT chains.  
+- sandwich CNOT chains (Safe mode only),  
+- local replacement R1 (S-triple → 5-gate rewrite; 0 borrowed wires; ADR 0004),  
+- local replacement R2 (carry-majority 3-Toffoli → 5-gate rewrite; 1 borrowed zero-ancilla wire, restored; ADR 0005).  
 
 In the full research literature the most powerful mixing step replaces a small sub-circuit with a different but equivalent sub-circuit drawn from a large precomputed table.
 
 ### Sandwiching
 A hardening technique that inserts reversible scrambling chains (slice gates) immediately before and after a target section.  
-Because the chains are self-inverse when applied in reverse order, the net functional effect on the section is identity, while intermediate values are obscured.
+The chains are self-inverse when applied in reverse order, so the net functional effect on the section is identity **only when the chain acts as the identity on every wire the section reads or writes** (Safe mode — ancilla-only). Conjugating a non-linear circuit by a chain that touches its computation wires does NOT preserve it (Active mode is experimental and known-defective; ADR 0002, ticket 0024).
 
 ### Shuffling
 Reordering of gates that share the same topological depth level.  
@@ -130,5 +133,7 @@ Primary cost metric tracked after each pipeline phase.
 
 ---
 
-*Last updated: 2026-08-26*  
-*Source alignment: Vitalik Buterin, “Obfuscation (Part 3): Local Mixing”, 2026-08-21.*
+
+*Last updated: 2026-09-12*
+*Correction 2026-09-12: Active mode corrected from "default" to "experimental / NOT default"; Safe mode corrected to pipeline default (ticket 0024, ADR 0002). The `F⁻¹ ∘ Adder ∘ F` cancellation claim was withdrawn per ADR 0002 (holds only in Safe mode). Local replacements R1/R2 (ADR 0004/0005) added to the MVP subset. Ripple-carry adder wire count clarified (base vs pipeline default `extra_ancilla = 4`).*
+*Source alignment: Vitalik Buterin, "Obfuscation (Part 3): Local Mixing", 2026-08-21.*

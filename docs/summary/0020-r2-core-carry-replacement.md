@@ -2,7 +2,7 @@
 
 - **Date**: 2026-09-10
 - **Spec/ADR Path**: `docs/adr/0005-r2-carry-replacement-and-metrics.md`
-- **Ticket Path**: `docs/ticket/0020-r2-core-carry-replacement.md`
+- **Ticket Path**: `docs/archive/tickets/0020-r2-core-carry-replacement.md`
 - **Branch**: (uncommitted work on current branch)
 
 ---

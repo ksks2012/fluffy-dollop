@@ -64,11 +64,13 @@ described in ADR 0004).
   adjacency the match requires (ADR 0004 order amendment). `replacements == n` (n=2 → 2, n=4 → 4)
   holds deterministically when it runs before shuffle.
 - **Local Replacement (R2)**: a second pass within the replace phase (ADR 0005), running directly
-  after R1 in the same pass. Matches X-Tof-X triples (a Toffoli flanked by one CNOT on each side,
-  all writing the same target wire `z`) and rewrites each window in place with a half-toffoli
-  reconstruction; the rewrite is equivalent iff `z` is a touchable zero-ancilla wire — R2 borrows
-  exactly 1 borrowed ancilla and requires `extra_ancilla >= 1` (extra=0 → r2=0 correctly). On the
-  bare adder R2 hits `r2 == n` (2 for n=2, 4 for n=4) with `r1 == n`, total `== 2n`.
+  after R1 in the same pass. Matches **carry-majority triples** — three strictly-adjacent `Toffoli`
+  gates, all targeting the same wire, with controls drawn from exactly three distinct wires — and
+  rewrites each window in place as `CNOT(a,z); Toffoli(b,z,T); Toffoli(ci,z,T); Toffoli(b,ci,T);
+  CNOT(a,z)` (maj reconstruction; `z` borrowed from the extra wire pool and restored to 0). The
+  rewrite is equivalent iff `z` is a touchable zero-ancilla wire — R2 borrows exactly 1 borrowed
+  ancilla and requires `extra_ancilla >= 1` (extra=0 → r2=0 correctly). On the bare adder R2 hits
+  `r2 == n` (2 for n=2, 4 for n=4) with `r1 == n`, total `== 2n`.
 - **Shuffling**: Reorder gates that share the same topological depth level. Gates at the same depth are independent and may be freely permuted.
 - **Junk Gate Injection**: Insert Toffoli gates that touch at least one zero-valued ancilla wire. Because one control is 0, the gate acts as an identity on the observable computation while increasing circuit volume.
 - These operations constitute the MVP’s local, functionality-preserving transformations. They are a deliberate simplification of the full Local Mixing ideal (which includes repeated replacement of small sub-circuits by equivalent alternatives).
