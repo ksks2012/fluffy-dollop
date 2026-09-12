@@ -60,9 +60,12 @@ provably-equivalent local rewrite (R1) of matched CNOT-triple windows.
 Introduced a genuine mixing sandwiching mode alongside the prior no-op baseline.
 
 - Introduced `SandwichMode` (`Safe | Active`) and extended `apply_sandwich` (expand–contract migration; all existing call sites forced to `Safe` first, CI green throughout).
-- **Active mode** (now the pipeline default): CNOT chain control wires drawn from primary inputs and targets from primary outputs, producing real value-level mixing (`input XOR adder_partial_result`) while preserving the 32-input truth table and zero-ancilla invariant. Correctness by `F⁻¹ ∘ Adder ∘ F` equivalence.
+- **Active mode** (tentatively made the pipeline default at the time): CNOT chain control wires drawn from primary inputs and targets from primary outputs, aiming for real value-level mixing (`input XOR adder_partial_result`) and claiming truth-table / zero-ancilla preservation via `F⁻¹ ∘ Adder ∘ F` equivalence.
 - **Safe mode** retained as a no-op baseline for isolated downstream-phase testing.
-- `PipelineConfig.sandwich_mode` (default `Active`) + `sandwich_chain_length`; CLI `--sandwich-mode=active|safe`; `--no-sandwich` still fully skips the phase.
+- `PipelineConfig.sandwich_mode` (default was `Active`) + `sandwich_chain_length`; CLI `--sandwich-mode=active|safe`; `--no-sandwich` still fully skips the phase.
+
+> See the correction banner above — and Milestone 4 — for the final word: Active does **not** preserve
+> the truth table / ancilla invariant, is experimental, and the default is now **Safe**.
 - Scramble verification (forward-only intermediate perturbation) + Safe/Active truth-table, ancilla-invariant, determinism, gate-count-delta tests.
 - Docs updated: `DEFINITION.md` (Sandwiching), `CONTEXT.md` (Phase 2), `README.md` (CLI + sample output). ADR 0002 records the decision.
 
