@@ -10,6 +10,10 @@
 > NOT the pipeline default; it does not preserve the truth table (verified failing) and can break
 > the zero-ancilla invariant at the phase boundary. Awaiting a conjugation-sound redesign in a
 > separate deferred ticket. Affected tests were updated accordingly (ticket 0024 pin tests).
+>
+> **Further (2026-09-12, grilling):** the intent of intermediate-value scrambling is carried forward by
+> **Sound equivalent replacement** in the local-replace family (Pass 0) — `docs/adr/0006-sound-equivalent-replacement.md`.
+> Legacy `SandwichMode::Active` remains experimental / known-broken and is **not repaired in place**.
 
 > Spec: sandwich hardening strengthening — enabling real mixing of intermediate values.
 > Synthesized from grilling session outcomes. Terminology follows `docs/DEFINITION.md`.
