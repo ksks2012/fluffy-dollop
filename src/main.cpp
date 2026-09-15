@@ -16,7 +16,11 @@ static void print_phase(const PhaseStats& p) {
               << "  overhead=" << std::fixed << std::setprecision(2) << p.overhead << "x"
               << "  ancilla=" << (p.ancilla_ok ? "OK" : "FAIL");
     if (p.replacements > 0) {
-        if (p.replacements_r2 > 0)
+        if (p.replacements_sound > 0)
+            std::cout << "  hits=" << p.replacements_sound << "+"
+                      << p.replacements_r1
+                      << (p.replacements_r2 > 0 ? "+" + std::to_string(p.replacements_r2) : "");
+        else if (p.replacements_r2 > 0)
             std::cout << "  hits=" << p.replacements_r1 << "+" << p.replacements_r2;
         else
             std::cout << "  hits=" << p.replacements;
@@ -48,6 +52,7 @@ int main(int argc, char* argv[]) {
         else if (arg == "--no-shuffle")  cfg.enable_shuffle  = false;
         else if (arg == "--no-replace")  cfg.enable_replace  = false;
         else if (arg == "--replace-r2")  cfg.enable_replace_r2  = true;
+        else if (arg == "--sound")       cfg.enable_sound       = true;
         else if (arg == "--no-inject")   cfg.enable_inject   = false;
         else if (arg.substr(0, 16) == "--sandwich-mode=") {
             std::string m = arg.substr(16);
@@ -82,6 +87,7 @@ int main(int argc, char* argv[]) {
               << (cfg.enable_sandwich ? " sandwich" : "")
               << (cfg.enable_replace  ? " replace"  : "")
               << (cfg.enable_replace_r2 ? " --replace-r2" : "")
+              << (cfg.enable_sound    ? " --sound" : "")
               << (cfg.enable_shuffle  ? " shuffle"  : "")
               << (cfg.enable_inject   ? " inject"   : "")
               << "\n";

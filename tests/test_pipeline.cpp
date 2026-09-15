@@ -609,6 +609,115 @@ static void test_pipeline_no_replace_disables_r2() {
 }
 
 // ---------------------------------------------------------------------------
+// Ticket 0027: Sound pipeline integration
+// ---------------------------------------------------------------------------
+
+// enable_sound defaults to false (M4 behavior unchanged).
+static void test_pipeline_sound_default_off() {
+    PipelineConfig cfg;
+    CHECK(cfg.enable_sound == false);
+}
+
+// Sound on: bare adder n=2, extra_ancilla=4, Safe sandwich, seed 42.
+// Deterministic (Sound consumes no rng): TT + ancilla PASS at every boundary.
+static void test_pipeline_sound_n2() {
+    PipelineConfig cfg;
+    cfg.n = 2;
+    cfg.extra_ancilla = 4;
+    cfg.enable_sound = true;
+    cfg.sandwich_mode = SandwichMode::Safe;
+    auto r = run_full_pipeline(cfg);
+    CHECK(check_truth_table(r.circuit));
+    for (const auto& p : r.phases) CHECK(p.ancilla_ok);
+    const PhaseStats* replace = nullptr;
+    for (const auto& p : r.phases)
+        if (p.name == "replace") { replace = &p; break; }
+    CHECK(replace != nullptr);
+    if (replace) {
+        CHECK(replace->replacements_sound > 0);
+        CHECK(replace->replacements ==
+              replace->replacements_sound + replace->replacements_r1 + replace->replacements_r2);
+    }
+}
+
+// Sound on: bare adder n=4, extra_ancilla=4, Safe sandwich.
+static void test_pipeline_sound_n4() {
+    PipelineConfig cfg;
+    cfg.n = 4;
+    cfg.extra_ancilla = 4;
+    cfg.enable_sound = true;
+    cfg.sandwich_mode = SandwichMode::Safe;
+    auto r = run_full_pipeline(cfg);
+    CHECK(check_truth_table(r.circuit));
+    for (const auto& p : r.phases) CHECK(p.ancilla_ok);
+    const PhaseStats* replace = nullptr;
+    for (const auto& p : r.phases)
+        if (p.name == "replace") { replace = &p; break; }
+    CHECK(replace != nullptr);
+    if (replace) {
+        CHECK(replace->replacements_sound > 0);
+        CHECK(replace->replacements ==
+              replace->replacements_sound + replace->replacements_r1 + replace->replacements_r2);
+    }
+}
+
+// Sound off (default): M4 behavior unchanged — R1 still hits n deterministically.
+static void test_pipeline_sound_off_m4_regression() {
+    PipelineConfig cfg;
+    cfg.sandwich_mode = SandwichMode::Safe;
+    auto r = run_full_pipeline(cfg);
+    const PhaseStats* replace = nullptr;
+    for (const auto& p : r.phases)
+        if (p.name == "replace") { replace = &p; break; }
+    CHECK(replace != nullptr);
+    if (replace) {
+        CHECK(replace->replacements_sound == 0);
+        CHECK(replace->replacements_r1 == 2);   // n=2, r1 == n unchanged
+    }
+    CHECK(check_truth_table(r.circuit));
+}
+
+// T6 combinations: Sound × R2 toggles each pass TT + ancilla (n=4, Safe).
+static void test_pipeline_sound_r2_combinations() {
+    for (bool sound : {false, true}) {
+        for (bool r2 : {false, true}) {
+            PipelineConfig cfg;
+            cfg.n = 4;
+            cfg.extra_ancilla = 4;
+            cfg.enable_sound  = sound;
+            cfg.enable_replace_r2 = r2;
+            cfg.sandwich_mode = SandwichMode::Safe;
+            auto r = run_full_pipeline(cfg);
+            CHECK(check_truth_table(r.circuit));
+            for (const auto& p : r.phases) CHECK(p.ancilla_ok);
+            const PhaseStats* replace = nullptr;
+            for (const auto& p : r.phases)
+                if (p.name == "replace") { replace = &p; break; }
+            CHECK(replace != nullptr);
+            if (replace) {
+                CHECK(replace->replacements == replace->replacements_sound
+                      + replace->replacements_r1 + replace->replacements_r2);
+                if (sound) CHECK(replace->replacements_sound > 0);
+                else       CHECK(replace->replacements_sound == 0);
+                if (r2)    CHECK(replace->replacements_r2 > 0);
+                else       CHECK(replace->replacements_r2 == 0);
+            }
+        }
+    }
+}
+
+// --no-replace disables the entire phase (Sound + R1 + R2): with Sound on, the
+// replace phase entry must be absent entirely.
+static void test_pipeline_no_replace_disables_sound() {
+    PipelineConfig cfg;
+    cfg.enable_replace = false;
+    cfg.enable_sound = true;   // should be ignored when enable_replace=false
+    auto r = run_full_pipeline(cfg);
+    for (const auto& p : r.phases)
+        CHECK(p.name != "replace");
+}
+
+// ---------------------------------------------------------------------------
 // Ticket 0022: per-phase structural metrics
 //
 // Done-gate numbers corrected per measurement (ADR 0005 table was R2-standalone
@@ -737,6 +846,14 @@ int main() {
     test_pipeline_metrics_adder_phase();
     test_pipeline_metrics_partition_at_every_boundary();
     test_pipeline_metrics_after_r1_r2();
+
+    // Ticket 0027: Sound pipeline integration
+    test_pipeline_sound_default_off();
+    test_pipeline_sound_n2();
+    test_pipeline_sound_n4();
+    test_pipeline_sound_off_m4_regression();
+    test_pipeline_sound_r2_combinations();
+    test_pipeline_no_replace_disables_sound();
 
     if (s_failed == 0)
         std::cout << "All " << s_run << " tests passed.\n";

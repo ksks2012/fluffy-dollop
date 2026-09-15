@@ -25,8 +25,9 @@ struct PipelineConfig {
     SandwichMode sandwich_mode       = SandwichMode::Safe;
     int  sandwich_chain_length       = 8;
 
-    // Phase 2 — local replacement (R1 + optional R2)
+    // Phase 2 — local replacement (Sound + R1 + optional R2)
     bool enable_replace       = true;
+    bool enable_sound         = false;  // Sound T-c pass (Pass 0, default off)
     bool enable_replace_r2    = false;  // R2 carry-majority pass (default off)
 
     // Phase 3 — shuffle
@@ -46,7 +47,8 @@ struct PhaseStats {
     int  wire_count;
     double overhead;       // gate_count / original_gate_count (adder's gate count)
     bool ancilla_ok;       // all non-output ancilla wires = 0 for all inputs
-    int  replacements = 0; // total windows replaced (R1 + R2)
+    int  replacements = 0; // total windows replaced (Sound + R1 + R2)
+    int  replacements_sound = 0; // Sound (T-c) replacements
     int  replacements_r1 = 0; // R1 (S-triple) replacements
     int  replacements_r2 = 0; // R2 (carry-majority) replacements
     int  depth_levels = 0; // max topological depth (ticket 0022)

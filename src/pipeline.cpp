@@ -90,7 +90,8 @@ static PhaseMetrics measure_structural(const Circuit& c) {
 // Build a PhaseStats snapshot for the circuit's current state.
 static PhaseStats make_phase_stats(const std::string& name, const Circuit& c,
                                    int original_gates, bool ancilla_ok,
-                                   int replacements, int replacements_r1,
+                                   int replacements, int replacements_sound,
+                                   int replacements_r1,
                                    int replacements_r2) {
     PhaseMetrics m = measure_structural(c);
     PhaseStats s;
@@ -100,6 +101,7 @@ static PhaseStats make_phase_stats(const std::string& name, const Circuit& c,
     s.overhead        = static_cast<double>(c.gate_count()) / original_gates;
     s.ancilla_ok      = ancilla_ok;
     s.replacements    = replacements;
+    s.replacements_sound = replacements_sound;
     s.replacements_r1 = replacements_r1;
     s.replacements_r2 = replacements_r2;
     s.depth_levels    = m.depth_levels;
@@ -153,7 +155,7 @@ PipelineResult run_full_pipeline(const PipelineConfig& cfg) {
     // Phase 0 — adder (always runs)
     phases.push_back(make_phase_stats(
         "adder", circuit, ORIGINAL_GATES, check_ancilla_invariant(circuit),
-        0, 0, 0));
+        0, 0, 0, 0));
 
     // Phase 1 — sandwich
     if (cfg.enable_sandwich) {
@@ -161,7 +163,7 @@ PipelineResult run_full_pipeline(const PipelineConfig& cfg) {
                        cfg.sandwich_mode, rng);
         phases.push_back(make_phase_stats(
             "sandwich", circuit, ORIGINAL_GATES, check_ancilla_invariant(circuit),
-            0, 0, 0));
+            0, 0, 0, 0));
     }
 
     // Phase 2 — local replacement (R1 + optional R2): single-pass, fixed rewrite.
@@ -172,11 +174,12 @@ PipelineResult run_full_pipeline(const PipelineConfig& cfg) {
     // relies on. Replacing while the structure is still tight keeps hits == n.
     if (cfg.enable_replace) {
         LocalReplaceConfig replace_cfg;
-        replace_cfg.enable_r2 = cfg.enable_replace_r2;
+        replace_cfg.enable_sound = cfg.enable_sound;
+        replace_cfg.enable_r2    = cfg.enable_replace_r2;
         ReplaceResult rr = apply_local_replace(circuit, replace_cfg, rng);
         phases.push_back(make_phase_stats(
             "replace", circuit, ORIGINAL_GATES, check_ancilla_invariant(circuit),
-            rr.total(), rr.r1_hits, rr.r2_hits));
+            rr.total(), rr.sound_hits, rr.r1_hits, rr.r2_hits));
     }
 
     // Phase 3 — shuffle
@@ -184,7 +187,7 @@ PipelineResult run_full_pipeline(const PipelineConfig& cfg) {
         shuffle_depth_levels(circuit, rng);
         phases.push_back(make_phase_stats(
             "shuffle", circuit, ORIGINAL_GATES, check_ancilla_invariant(circuit),
-            0, 0, 0));
+            0, 0, 0, 0));
     }
 
     // Phase 4 — inject junk
@@ -192,7 +195,7 @@ PipelineResult run_full_pipeline(const PipelineConfig& cfg) {
         inject_junk_gates(circuit, inject_pool, cfg.inject_count, rng);
         phases.push_back(make_phase_stats(
             "inject", circuit, ORIGINAL_GATES, check_ancilla_invariant(circuit),
-            0, 0, 0));
+                0, 0, 0, 0));
     }
 
     return PipelineResult(std::move(circuit), std::move(phases));
