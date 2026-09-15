@@ -51,8 +51,17 @@ The **4-bit ripple-carry adder** (33 gates, 21 wires, 512-input truth table) is 
 
 ### Phase 3: Mixing (Simplified)
 
-Pipeline order: `adder → sandwich → local replace (R1) → shuffle → junk injection` (local replace is
-described in ADR 0004).
+Pipeline order: `adder → sandwich → local replace (Sound→R1→R2) → shuffle → junk injection` (local
+replace is described in ADR 0004 / ADR 0005 / ADR 0006).
+
+- **Local Replacement (Sound, Pass 0)**: the sound carrier of the legacy Active mode's "scramble
+  intermediate values" intent (ADR 0006). Matches the **same** strictly-adjacent same-target CNOT
+  triples as R1 and rewrites each window in place as `CNOT(a,z); CNOT(z,s); CNOT(a,z); CNOT(b,s);
+  CNOT(c,s)` (T-c pattern; net `s ⊕= a⊕b⊕c`; borrows `z` as a shadow of `a`, restored to 0 by window
+  end; adds 2 CNOT per hit). `z` uses the same first-extra-ancilla selection as R2
+  (`index ≥ 4n+1`); `extra_ancilla = 0` → Sound reports 0 hits. Opt-in via
+  `PipelineConfig::enable_sound` / CLI `--sound` (default off); runs first, so on a bare adder it
+  consumes every S-triple and `r1` drops to 0. Enabling Sound does not consume `mt19937`.
 
 - **Local Replacement (R1)**: matches strictly-adjacent triples of CNOT gates in the topological
   order (same target wire `s`, pairwise-distinct controls `a, b, c`, arbitrary control order) and
@@ -96,7 +105,7 @@ described in ADR 0004).
 | 5  | Hardening method          | Random CNOT sandwich chains         | Self-inverse, simple to insert/remove, preserves reversibility, integrates cleanly with later shuffling. |
 | 6  | Junk gate strategy        | Toffoli on zero-valued ancilla      | Identity-preserving when a control is 0; harder for trivial cleanup passes to remove than plain identity pairs. Requires strict maintenance of the zero-ancilla invariant. |
 | 7  | Shuffling algorithm       | Topological depth level             | Correct by construction (same-depth gates are independent). Sufficient for a small circuit. |
-| 8  | Mixing scope              | Simplified (shuffle + junk + sandwich) + fixed local replacements R1 + R2 | Full automated generation mixing and nonlinear gadgets are out of scope; R1 (ADR 0004) is the deliberately minimal S-triple sliver and R2 (ADR 0005) extends it with a carry-majority X-Tof-X rewrite — both hand-written, provably equivalent, and validating the local-replacement concept. |
+| 8  | Mixing scope              | Simplified (shuffle + junk + sandwich) + fixed local replacements Sound + R1 + R2 | Full automated generation mixing and nonlinear gadgets are out of scope; R1 (ADR 0004) is the deliberately minimal S-triple sliver, R2 (ADR 0005) extends it with a carry-majority X-Tof-X rewrite, and Sound (ADR 0006) adds a T-c borrow-z variant of the R1 window that carries the legacy Active "intermediate-value scrambling" intent soundly — all hand-written, provably equivalent, and validating the local-replacement concept. |
 | 9  | Equivalence testing       | Exhaustive truth table (`2^(2n+1)` cases)   | Trivial runtime for n≤4; gives 100 % functional correctness guarantee. Generalized checker derives n from `num_inputs()`. |
 | 10 | Ancilla management        | Pre-allocate a fixed pool of zero-initialized ancilla wires | Guarantees the zero invariant required by junk gates and hardening; exact count to be decided in implementation Spec. |
 | 11 | Randomness                | Deterministic and reproducible (`std::mt19937` or equivalent + recorded seed) | Essential for debugging and for repeating verification runs. |

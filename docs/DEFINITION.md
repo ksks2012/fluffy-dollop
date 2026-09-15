@@ -14,7 +14,7 @@ Each transformation slightly confuses and diffuses structural information. After
 Inspired by the design tradition of symmetric cryptography and hash functions (deliberate chaos rather than structured mathematical hardness). It does not rely on elliptic curves, factoring, or lattices.
 
 In the full research vision, the strongest form of mixing replaces small sub-circuits with randomly chosen functionally equivalent alternatives (often precomputed in large tables).  
-This MVP implements a simplified subset: sandwiching, depth-level shuffling, zero-ancilla junk injection, and two fixed, hand-written local replacements (R1 S-triple, R2 carry-majority — ADR 0004 / ADR 0005).
+This MVP implements a simplified subset: sandwiching, depth-level shuffling, zero-ancilla junk injection, and three fixed, hand-written local replacements (Sound S-triple T-c ADR 0006, R1 S-triple ADR 0004, R2 carry-majority ADR 0005).
 
 ### Reversible Circuit
 A logic circuit composed exclusively of invertible gates, so that every output pattern corresponds to exactly one input pattern.  
@@ -107,6 +107,7 @@ Concrete operations used in this MVP include:
 - depth-level shuffling,  
 - junk-gate injection,  
 - sandwich CNOT chains (Safe mode only),  
+- local replacement Sound (S-triple → T-c 5-CNOT reuse of borrow wire z, restored; ADR 0006 — the sound carrier of the legacy Active "scramble intermediate values" intent),  
 - local replacement R1 (S-triple → 5-gate rewrite; 0 borrowed wires; ADR 0004),  
 - local replacement R2 (carry-majority 3-Toffoli → 5-gate rewrite; 1 borrowed zero-ancilla wire, restored; ADR 0005).  
 
@@ -134,6 +135,7 @@ Primary cost metric tracked after each pipeline phase.
 ---
 
 
-*Last updated: 2026-09-12*
+*Last updated: 2026-09-15*
 *Correction 2026-09-12: Active mode corrected from "default" to "experimental / NOT default"; Safe mode corrected to pipeline default (ticket 0024, ADR 0002). The `F⁻¹ ∘ Adder ∘ F` cancellation claim was withdrawn per ADR 0002 (holds only in Safe mode). Local replacements R1/R2 (ADR 0004/0005) added to the MVP subset. Ripple-carry adder wire count clarified (base vs pipeline default `extra_ancilla = 4`).*
+*Correction 2026-09-15: Sound equivalent replacement (ADR 0006) added as Pass 0 of the local-replace phase, carrying the legacy Active mode's intermediate-value-scrambling intent. `--sound` (default off) opts in; the `hits` display becomes `hits=S+R1+R2`.*
 *Source alignment: Vitalik Buterin, "Obfuscation (Part 3): Local Mixing", 2026-08-21.*

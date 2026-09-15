@@ -13,14 +13,14 @@ Local Mixing is an obfuscation paradigm (inspired by symmetric ciphers/hash func
 The pipeline applies four phases to an n-bit reversible ripple-carry adder:
 
 ```
-adder (9n-3 gates) → sandwich → local replace (R1+R2) → shuffle → inject junk → verification
+adder (9n-3 gates) → sandwich → local replace (Sound→R1→R2) → shuffle → inject junk → verification
 ```
 
 | Phase | Operation | Effect |
 |-------|-----------|--------|
 | **Reversibility** | Build n-bit adder via `make_nbit_adder(n)` (VBE-style: forward carry → sums → reverse uncompute; `9n-3` gates) | Reversible baseline |
 | **Sandwiching** | Insert random self-inverse CNOT chains before/after the circuit | Scrambles intermediate values. Safe (default): extra ancilla only, equivalence guaranteed. Active (experimental): all wires, does NOT guarantee TT (ticket 0024) |
-| **Local Replacement** | Rewrite matched CNOT-triple / X-Tof-X windows (R1 R2) | Adds Toffoli/CNOT volume; `r1 == n`, `r2 == n` (hits) |
+| **Local Replacement** | Rewrite matched CNOT-triple / X-Tof-X windows (Sound→R1→R2) | Adds Toffoli/CNOT volume; Sound `--sound` yields `hits=S[+R1][+R2]` |
 | **Shuffling** | Permute gates within the same topological depth level | Alters execution order; larger for n=4 |
 | **Junk Injection** | Insert no-op Toffoli gates on zero-valued ancilla wires | Inflates circuit volume |
 | **Verification** | Exhaustive truth-table (`2^(2n+1)` inputs) + ancilla invariant | Confirms functional equivalence |
@@ -55,9 +55,11 @@ Requires CMake ≥ 3.16 and a C++17 compiler.
 ./build/gate_driver                          # 2-bit, Safe sandwich (default)
 ./build/gate_driver --bits=4                 # 4-bit adder (primary validation circuit)
 ./build/gate_driver --bits=2 --replace-r2    # 2-bit, enable R2 replacement (needs extra ancilla)
+./build/gate_driver --bits=2 --sound          # 2-bit, enable Sound T-c pass (needs extra ancilla; scrambles intermediate z mid-window, restored)
+./build/gate_driver --bits=4 --sound --replace-r2   # 4-bit, Sound + R2 combined
 ./build/gate_driver --extra-ancilla=8        # wider ancilla pool
 ./build/gate_driver --sandwich-mode=active   # experimental Active (warning; NOT TT-safe)
-./build/gate_driver --no-replace             # disable local replacement (R1+R2)
+./build/gate_driver --no-replace             # disable local replacement (Sound+R1+R2)
 ./build/gate_driver --no-sandwich            # skip sandwiching
 ./build/gate_driver --no-shuffle             # skip shuffling
 ./build/gate_driver --no-inject              # skip junk injection
@@ -112,7 +114,7 @@ ctest
 - `inject_junk` — junk gate invariant, truth-table, ancilla invariant
 - `pipeline` — end-to-end 2-bit and 4-bit pipeline verification
 - `adder` — n-bit adder wire-contract, gate-sequence spot-check, truth-table (n=2, n=4)
-- `local_replace` — R1 (S-triple) and R2 (carry-majority) local rewrites, structural metrics
+- `local_replace` — Sound (T-c), R1 (S-triple) and R2 (carry-majority) local rewrites, structural metrics
 
 ---
 

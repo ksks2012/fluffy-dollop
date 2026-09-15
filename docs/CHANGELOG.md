@@ -6,6 +6,31 @@ Current system state lives in `CONTEXT.md`; terminology in `DEFINITION.md`.
 
 ---
 
+## Milestone 5 — Sound Equivalent Replacement (2026-09-15)
+
+Sound carrier of the legacy Active mode's "scramble intermediate values" intent: a third local-replace
+pattern that is correction-by-construction (ADR 0006), replacing the withdrawn `F⁻¹∘Adder∘F`
+conjugation claim with a window-level-verified T-c rewrite.
+
+- **Sound core (ADR 0006, ticket 0026)**: new Pass 0 in `apply_local_replace`; matches the R1-family
+  S-triple window and rewrites each in place as `CNOT(a,z); CNOT(z,s); CNOT(a,z); CNOT(b,s);
+  CNOT(c,s)` (T-c), borrowing `z` as a shadow of `a` restored to 0 by window end. `ReplaceResult`
+  gains `sound_hits`; `LocalReplaceConfig::enable_sound` (default off). `z` reuses R2's first
+  extra-ancilla selection (`index ≥ 4n+1`); `extra_ancilla = 0` → 0 hits. Canonical sequence proven
+  by window-level exhaustive enumeration (all 16 assignments, final `z == 0`).
+- **Pipeline + CLI integration (ticket 0027)**: `PipelineConfig::enable_sound` (default off), CLI
+  `--sound` (symmetric to `--replace-r2`), `PhaseStats::replacements_sound`, CLI `hits=S+R1+R2`; the
+  `--no-replace` master switch disables Sound together with R1/R2. Enabling Sound consumes no `mt19937`.
+- **Intermediate-state proof + docs (ticket 0028)**: T5 half-sequence recombination test asserts
+  `z == 1` mid-window for a reproducible input (`a == 1`) while the completed window restores `z == 0`;
+  CONTEXT / CHANGELOG / README updated with Sound as the replace-family Pass 0.
+- Measured (bare adder, extra_ancilla ≥ 1, no sandwich): n=2 → `sound=2 r1=0 total=2`; n=4 → `sound=4
+  r1=0 total=4` (Sound consumes every S-triple). Full Safe pipeline with `--sound` and `--replace-r2`:
+  n=2 → `hits=2+0`, n=4 → `hits=4+0+6`; TT + ancilla PASS.
+- Tests: 8/8 suites green.
+
+**References:** ADR `0006-sound-equivalent-replacement.md` (ADR 0002 appended); tickets 0025–0028.
+
 ## Milestone 4 — R2 Carry-Majority Replacement + Per-Phase Structural Metrics (2026-09-11)
 
 Second local rewrite (R2): carry-majority reconstruction with borrowed zero-ancilla wires, plus
