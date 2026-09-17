@@ -45,6 +45,7 @@ int main(int argc, char* argv[]) {
     PipelineConfig cfg;
     int bits_arg = cfg.n;          // default from PipelineConfig (2)
     bool verbose_metrics = false;  // --verbose-metrics (ticket 0022)
+    bool has_key = false, has_seed = false;  // ADR 0007 precedence hint
 
     for (int i = 1; i < argc; ++i) {
         std::string arg(argv[i]);
@@ -60,6 +61,22 @@ int main(int argc, char* argv[]) {
             else if (m == "safe")   cfg.sandwich_mode = SandwichMode::Safe;
             // else: unrecognised value ignored; default (Safe) kept (ticket 0024)
         }
+        else if (arg.substr(0, 7) == "--seed=") {
+            has_seed = true;
+            cfg.seed = std::stoi(arg.substr(7));
+        }
+        else if (arg.substr(0, 6) == "--key=") {
+            has_key = true;
+            cfg.key = arg.substr(6);
+            // ADR 0007: an empty / whitespace-only key is a user error, never "no key".
+            bool blank = true;
+            for (unsigned char ch : cfg.key)
+                if (ch > ' ' && ch != 0x7f) { blank = false; break; }
+            if (cfg.key.empty() || blank) {
+                std::cerr << "error: --key= requires a non-empty string value\n";
+                return 1;
+            }
+        }
         else if (arg.substr(0, 7) == "--bits=") {
             bits_arg = std::stoi(arg.substr(7));
         }
@@ -72,6 +89,10 @@ int main(int argc, char* argv[]) {
         // --no-sandwich takes precedence over --sandwich-mode
     }
 
+    // ADR 0007 precedence: --key > --seed > default 42 (key wins when both given).
+    if (has_key && has_seed && !cfg.key.empty())
+        std::cerr << "warning: --key overrides --seed (ADR 0007 precedence)\n";
+
     // Validate --bits: only 2 and 4 are supported in this release.
     if (bits_arg != 2 && bits_arg != 4) {
         std::cerr << "error: --bits=" << bits_arg
@@ -82,7 +103,9 @@ int main(int argc, char* argv[]) {
 
     std::cout << "Seed: " << cfg.seed
               << "  bits=" << cfg.n
-              << "  extra-ancilla=" << cfg.extra_ancilla << "\n";
+              << "  extra-ancilla=" << cfg.extra_ancilla
+              << (cfg.key.empty() ? "" : "  key=\"" + cfg.key + "\"")
+              << "\n";
     std::cout << "Phases enabled:"
               << (cfg.enable_sandwich ? " sandwich" : "")
               << (cfg.enable_replace  ? " replace"  : "")

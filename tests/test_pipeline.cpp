@@ -1,6 +1,7 @@
 #include <iostream>
 #include <vector>
 #include <algorithm>
+#include <random>
 #include "pipeline.hpp"
 #include "adder.hpp"
 
@@ -220,6 +221,115 @@ static void test_pipeline_different_seeds() {
     CHECK(any_differ);
     // Active mode changes function and possibly ancilla state per seed;
     // the key property is that different seeds yield different gate layouts.
+}
+
+// ---------------------------------------------------------------------------
+// Ticket 0030 (ADR 0007): keyed PRNG seeding.
+// make_rng(cfg): empty key → mt19937(seed) fallback; non-empty key →
+// seed_seq(key bytes + "local-mixing-v1") → mt19937. Single shared stream.
+// ---------------------------------------------------------------------------
+
+// Small helper: first k outputs of the rng built by make_rng(cfg).
+static std::vector<uint32_t> rng_first(const PipelineConfig& cfg, int k = 4) {
+    auto rng = make_rng(cfg);
+    std::vector<uint32_t> out;
+    for (int i = 0; i < k; ++i) out.push_back(rng());
+    return out;
+}
+
+// Same key → same stream (bit-exact rng sequence).
+static void test_make_rng_same_key_same_stream() {
+    PipelineConfig a; a.key = "demo-key";
+    PipelineConfig b; b.key = "demo-key";
+    CHECK(rng_first(a) == rng_first(b));
+}
+
+// Different keys → at least one output differs.
+static void test_make_rng_different_key_different_stream() {
+    PipelineConfig a; a.key = "key-alpha";
+    PipelineConfig b; b.key = "key-beta";
+    CHECK(rng_first(a) != rng_first(b));
+}
+
+// Empty key falls back to mt19937(seed): default seed 42 (a),
+// explicit seed (b), and the literal mt19937(42) (c) all agree.
+static void test_make_rng_empty_key_seed_fallback() {
+    PipelineConfig dflt;                     // key="", seed=42
+    PipelineConfig seeded; seeded.seed = 42; // key="", seed=42 explicit
+    std::mt19937 ref(42);
+    std::vector<uint32_t> ref_out;
+    for (int i = 0; i < 4; ++i) ref_out.push_back(ref());
+    CHECK(rng_first(dflt)   == ref_out);
+    CHECK(rng_first(seeded) == ref_out);
+    // A different seed does NOT equal the default (proves the seed path works).
+    PipelineConfig other; other.seed = 7;
+    CHECK(rng_first(other) != ref_out);
+}
+
+// Same seed under different keys: key WINS (precedence over seed).
+static void test_make_rng_key_precedence_over_seed() {
+    PipelineConfig a; a.key = "precedence"; a.seed = 101;
+    PipelineConfig b; b.key = "precedence"; b.seed = 202;
+    CHECK(rng_first(a) == rng_first(b));
+    // And neither equals the seed-only stream (key ignored would mean == seed).
+    PipelineConfig s; s.seed = 101;
+    CHECK(rng_first(a) != rng_first(s));
+}
+
+// Pipeline-level: same key, same full config → bit-identical gate sequence.
+static void gates_signature(const Circuit& c, std::vector<int>& type,
+                            std::vector<int>& target) {
+    for (const auto& g : c.gates_ref()) {
+        if      (dynamic_cast<const CnotGate*>(g.get()))    { type.push_back(0); }
+        else if (dynamic_cast<const ToffoliGate*>(g.get())) { type.push_back(1); }
+        else if (dynamic_cast<const NotGate*>(g.get()))     { type.push_back(2); }
+        else                                                 { type.push_back(3); }
+        target.push_back(g->target_wire());
+    }
+}
+
+static void test_pipeline_same_key_bit_exact() {
+    PipelineConfig a = default_cfg(); a.key = "pipeline-key";
+    PipelineConfig b = default_cfg(); b.key = "pipeline-key";
+    auto r1 = run_full_pipeline(a);
+    auto r2 = run_full_pipeline(b);
+    std::vector<int> t1, w1, t2, w2;
+    gates_signature(r1.circuit, t1, w1);
+    gates_signature(r2.circuit, t2, w2);
+    CHECK(t1 == t2);  // same gate types, same order
+    CHECK(w1 == w2);  // same targets (bit-exact structural replay)
+}
+
+// Pipeline-level: different keys under an rng-consuming config SHARE the same
+// pass toggles but must differ in at least one gate (rng stream differs).
+static void test_pipeline_different_key_distinguishable() {
+    // Safe sandwich + shuffle + inject all ON (consume rng) — exactly the
+    // default_cfg() shape; identical toggles, only the key differs.
+    PipelineConfig a = default_cfg(); a.key = "key-alpha";
+    PipelineConfig b = default_cfg(); b.key = "key-beta";
+    auto r1 = run_full_pipeline(a);
+    auto r2 = run_full_pipeline(b);
+    std::vector<int> t1, w1, t2, w2;
+    gates_signature(r1.circuit, t1, w1);
+    gates_signature(r2.circuit, t2, w2);
+    bool any_differ = false;
+    for (int i = 0; i < static_cast<int>(w1.size()) && i < static_cast<int>(w2.size()); ++i)
+        if (t1[i] != t2[i] || w1[i] != w2[i]) { any_differ = true; break; }
+    CHECK(any_differ);
+}
+
+// A keyed run preserves truth-table + ancilla equivalence (Safe path).
+static void test_pipeline_keyed_equivalent_and_replayable() {
+    PipelineConfig cfg = default_cfg();
+    cfg.key = "equivalent-key";
+    auto r1 = run_full_pipeline(cfg);
+    auto r2 = run_full_pipeline(cfg);
+    CHECK(check_truth_table(r1.circuit));
+    CHECK(check_truth_table(r2.circuit));
+    // ancilla invariants hold across every phase boundary
+    bool all_ok = true;
+    for (const auto& p : r1.phases) if (!p.ancilla_ok) { all_ok = false; break; }
+    CHECK(all_ok);
 }
 
 // ---------------------------------------------------------------------------
@@ -810,6 +920,15 @@ int main() {
     test_pipeline_no_inject();
     test_pipeline_adder_only();
     test_pipeline_different_seeds();
+
+    // Ticket 0030 (ADR 0007): keyed PRNG seeding
+    test_make_rng_same_key_same_stream();
+    test_make_rng_different_key_different_stream();
+    test_make_rng_empty_key_seed_fallback();
+    test_make_rng_key_precedence_over_seed();
+    test_pipeline_same_key_bit_exact();
+    test_pipeline_different_key_distinguishable();
+    test_pipeline_keyed_equivalent_and_replayable();
     // Ticket 0024: default is Safe; Active pinned as KNOWN-BROKEN
     test_pipeline_default_mode_is_safe();
     test_pipeline_active_known_broken_truth_table_pinned();

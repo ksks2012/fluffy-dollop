@@ -20,6 +20,12 @@ target_include_directories(common_lib PUBLIC ${CMAKE_SOURCE_DIR}/include)
 add_executable(gate_driver src/main.cpp)
 target_link_libraries(gate_driver PRIVATE common_lib)
 
+# ADR 0007 CLI-level checks (ticket 0030): gate_driver exit codes.
+add_test(NAME cli_key_empty_errors COMMAND gate_driver --key=)
+set_tests_properties(cli_key_empty_errors PROPERTIES WILL_FAIL TRUE)
+add_test(NAME cli_key_then_seed COMMAND gate_driver --key=demo --seed=7 --no-inject)
+add_test(NAME cli_seed_only COMMAND gate_driver --seed=7 --no-inject)
+
 # Tests
 enable_testing()
 add_executable(test_gates tests/test_gates.cpp)

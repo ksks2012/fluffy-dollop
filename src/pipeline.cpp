@@ -133,6 +133,25 @@ static std::vector<int> derive_free_ancilla(const Circuit& c) {
 }
 
 // ---------------------------------------------------------------------------
+// make_rng — ADR 0007 keyed PRNG construction (single shared rng stream).
+// !cfg.key.empty(): seed_seq from key bytes + domain separator "local-mixing-v1".
+// Empty key: exactly mt19937(cfg.seed) (legacy deterministic-seed path).
+// ---------------------------------------------------------------------------
+std::mt19937 make_rng(const PipelineConfig& cfg) {
+    if (cfg.key.empty())
+        return std::mt19937(cfg.seed);
+
+    std::vector<uint32_t> seeds;
+    for (char ch : cfg.key)
+        seeds.push_back(static_cast<uint32_t>(static_cast<unsigned char>(ch)));
+    const std::string domain = "local-mixing-v1";
+    for (char ch : domain)
+        seeds.push_back(static_cast<uint32_t>(static_cast<unsigned char>(ch)));
+    std::seed_seq seq(seeds.begin(), seeds.end());
+    return std::mt19937(seq);
+}
+
+// ---------------------------------------------------------------------------
 // run_full_pipeline
 // ---------------------------------------------------------------------------
 
@@ -140,7 +159,7 @@ PipelineResult run_full_pipeline(const PipelineConfig& cfg) {
     // Build the adder for the configured bit-width.
     Circuit circuit = make_nbit_adder(cfg.n, cfg.extra_ancilla);
     std::vector<PhaseStats> phases;
-    std::mt19937 rng(cfg.seed);
+    std::mt19937 rng = make_rng(cfg);
     const int ORIGINAL_GATES = circuit.gate_count();  // derived from factory
 
     // Derive Safe-mode sandwich ancilla: extra zero wires never written by the

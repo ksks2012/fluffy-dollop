@@ -2,6 +2,7 @@
 
 #include <string>
 #include <vector>
+#include <random>
 #include "circuit.hpp"
 #include "sandwich.hpp"
 
@@ -11,6 +12,10 @@
 // ---------------------------------------------------------------------------
 struct PipelineConfig {
     int seed = 42;
+    // ADR 0007: keyed PRNG seeding. Empty key → seed; non-empty key →
+    // seed_seq(key bytes + "local-mixing-v1") → mt19937. Pass enablement and
+    // parameters are NOT driven by the key (key only seeds the rng stream).
+    std::string key;
 
     // Adder size
     int n              = 2;   // bits per operand (default: 2-bit adder)
@@ -84,6 +89,14 @@ struct PipelineResult {
 // Disabled phases are skipped; their stats entry is omitted.
 // ---------------------------------------------------------------------------
 PipelineResult run_full_pipeline(const PipelineConfig& cfg = {});
+
+// ---------------------------------------------------------------------------
+// make_rng — ADR 0007 keyed PRNG construction. Single seam for the rng stream.
+// Precedence: !cfg.key.empty() → seed_seq(key bytes + "local-mixing-v1") →
+// mt19937; otherwise mt19937(cfg.seed) (exactly today's behavior). Returns a
+// fresh engine; the caller passes it by reference through every rng consumer.
+// ---------------------------------------------------------------------------
+std::mt19937 make_rng(const PipelineConfig& cfg);
 
 // ---------------------------------------------------------------------------
 // check_truth_table / check_ancilla_invariant — shared verification helpers
