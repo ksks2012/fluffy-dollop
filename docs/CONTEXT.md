@@ -48,6 +48,7 @@ The **4-bit ripple-carry adder** (33 gates, 21 wires, 512-input truth table) is 
   - **Safe mode** *(pipeline default, ticket 0024)* — wires drawn from zero-initialized extra ancilla only; every chain gate is a no-op (`F ≡ I` on the computation path), so functional equivalence is guaranteed by construction. Used by all correctness assertions.
   - **Active mode** *(experimental)* — control and target wires drawn from **all** current circuit wires `[0, num_wires())` with `ctrl ≠ tgt`.  The chain does not extend the wire count. KNOWN DEFECT (ticket 0024): `F⁻¹ ∘ Adder ∘ F ≢ Adder` for chains touching computation wires (conjugation does not preserve a non-linear circuit) — truth table and the zero-ancilla invariant FAIL. Do not use for equivalence-guaranteed runs; awaiting a conjugation-sound redesign in a separate deferred ticket.
 - `PipelineConfig::sandwich_mode` defaults to `SandwichMode::Safe`; `--sandwich-mode=active` switches to the experimental mode (CLI prints a warning).
+- **Randomness contract (ADR 0007, M6):** every rng-consuming phase (Safe sandwich chain, shuffle, junk injection) draws from ONE `std::mt19937` built by `make_rng(cfg)` at pipeline start: `--key` (non-empty string bytes + domain `"local-mixing-v1"` → `std::seed_seq`) > `--seed` (scalar `mt19937(seed)`) > default 42. Sound / R1 / R2 read no rng. `key` only seeds the stream — it does not enable/disable phases.
 
 ### Phase 3: Mixing (Simplified)
 
@@ -108,9 +109,12 @@ replace is described in ADR 0004 / ADR 0005 / ADR 0006).
 | 8  | Mixing scope              | Simplified (shuffle + junk + sandwich) + fixed local replacements Sound + R1 + R2 | Full automated generation mixing and nonlinear gadgets are out of scope; R1 (ADR 0004) is the deliberately minimal S-triple sliver, R2 (ADR 0005) extends it with a carry-majority X-Tof-X rewrite, and Sound (ADR 0006) adds a T-c borrow-z variant of the R1 window that carries the legacy Active "intermediate-value scrambling" intent soundly — all hand-written, provably equivalent, and validating the local-replacement concept. |
 | 9  | Equivalence testing       | Exhaustive truth table (`2^(2n+1)` cases)   | Trivial runtime for n≤4; gives 100 % functional correctness guarantee. Generalized checker derives n from `num_inputs()`. |
 | 10 | Ancilla management        | Pre-allocate a fixed pool of zero-initialized ancilla wires | Guarantees the zero invariant required by junk gates and hardening; exact count to be decided in implementation Spec. |
-| 11 | Randomness                | Deterministic and reproducible (`std::mt19937` or equivalent + recorded seed) | Essential for debugging and for repeating verification runs. |
+| 11 | Randomness                | One `std::mt19937` per run, seeded by `--key` > `--seed` > default 42 (ADR 0007) | `key` (non-empty string bytes + domain `"local-mixing-v1"` → `std::seed_seq`) gives bit-exact replay and key-to-key structural change; `seed` keeps the legacy scalar path; engineering PRNG (no security claims). |
 | 12 | Project structure         | `gate.*` + `circuit.*` + `main.cpp` | Separates core abstractions from the phase pipeline; sufficient for MVP. |
 | 13 | R2 borrow contract        | `z` drawn from the extra pool, first non-output wire with index ≥ 4n+1 (n=(num_inputs−1)/2) | Index-based selection is robust across sandwich modes (a "not targeted by any gate" heuristic failed post-Safe-sandwich); R2 requires `extra_ancilla >= 1` (extra=0 → r2=0 correctly). |
+| 14 | Keyed PRNG re-seeding     | `make_rng(cfg)`: empty key → `mt19937(cfg.seed)`; non-empty key → `std::seed_seq`(key bytes + `"local-mixing-v1"`) | Single construction seam shared by every rng consumer (sandwich → shuffle → inject). Key only seeds the stream; pass enablement/parameters stay public config/CLI. |
+
+ADR index: 0001 MVP spec, 0002 Active sandwiching, 0003 4-bit adder upgrade, 0004 R1 local replacement, 0005 R2 + metrics, 0006 Sound, 0007 Keyed PRNG seeding (M6).
 
 ---
 

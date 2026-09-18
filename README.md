@@ -64,12 +64,24 @@ Requires CMake ≥ 3.16 and a C++17 compiler.
 ./build/gate_driver --no-shuffle             # skip shuffling
 ./build/gate_driver --no-inject              # skip junk injection
 ./build/gate_driver --verbose-metrics        # print per-depth gate histogram of final circuit
+./build/gate_driver --seed=7                 # set the legacy scalar seed (default 42)
+./build/gate_driver --key="project-foo"      # keyed PRNG: deterministic, replayable (ADR 0007)
 ```
 
 `--no-sandwich` takes precedence over `--sandwich-mode`.  
 The **default sandwich mode is `safe`** (equivalence-guaranteed). Requesting `--sandwich-mode=active` prints a
 warning: Active does NOT guarantee truth-table / ancilla equivalence (known defect, ticket 0024; ADR 0002 amend).
 Unsupported `--bits` values (e.g. 3, 0, 8) print an error and exit non-zero.
+
+**Keyed seeding (ADR 0007).** One `std::mt19937` per run is seeded from the CLI in this order:
+
+1. `--key=<string>` — non-empty string bytes + domain `"local-mixing-v1"` → `std::seed_seq` → stream. Same key + same config ⇒ **bit-identical** circuit; different key ⇒ different random choices. Requirement-seeding applies to all rng phases (sandwich chain, shuffle, junk).
+2. `--seed=<int>` — legacy scalar `mt19937(seed)` (default 42).
+
+`--key` **overrides** `--seed` when both are given (stderr warning; not an error). An empty / whitespace-only
+`--key=` is an error (non-zero exit). Note `--key=42` (string) is a **different** derivation than `--seed=42`
+(int); both are deterministic. This is an engineering PRNG — no security claims (see ADR 0007; key does not
+select which phases run).
 
 Example output — **4-bit, Safe sandwich** (seed 42):
 
@@ -106,7 +118,7 @@ cd build
 ctest
 ```
 
-8 test suites, all passing:
+8 unit test suites plus 3 CLI-level checks (`cli_key_empty_errors` expects the non-zero exit for `--key=`), all passing:
 - `gates` — Toffoli / CNOT / NOT truth tables, self-inverse, polymorphism
 - `circuit` — circuit class, 2-bit adder correctness, exhaustive truth-table, ancilla invariant
 - `sandwich` — CNOT-chain sandwiching, Safe and Active modes, wire-pool scaling

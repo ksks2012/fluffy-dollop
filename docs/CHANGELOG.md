@@ -6,6 +6,35 @@ Current system state lives in `CONTEXT.md`; terminology in `DEFINITION.md`.
 
 ---
 
+## Milestone 6 — Keyed PRNG Seeding (2026-09-17)
+
+Deterministic, key-derived replay built on ADR 0007: a single `std::mt19937` per run is now seeded
+from a user-supplied **key** (non-empty string) instead of only the scalar `seed`. Same key + same
+config ⇒ **bit-identical circuit**; different key ⇒ different random choices across every
+rng-consuming phase (sandwich chain, shuffle, junk injection). The legacy `seed` path is untouched —
+no-`--key` runs reproduce today's circuits exactly.
+
+- **Derivation (ADR 0007, ticket 0030)**: `make_rng(cfg)` — empty `key` → `mt19937(cfg.seed)`;
+  non-empty `key` → `std::seed_seq`(key bytes + domain `"local-mixing-v1"`). Exactly one engine per
+  run, passed by reference through `sandwich → replace (Sound/R1/R2 read no rng) → shuffle → inject`;
+  zero consumer-signature changes. Precedence `--key` > `--seed` > 42; `--key` + `--seed` ⇒ warning
+  (not an error). Empty / whitespace-only `--key=` ⇒ error, non-zero exit (CLI ctest
+  `cli_key_empty_errors`, WILL_FAIL).
+- **Key is not a config language (ADR 0007 scope control)**: key only seeds the rng stream; pass
+  enablement and parameters (`--sound`, `--replace-r2`, inject count, …) stay public CLI/config. Keyed
+  streams are an **engineering PRNG** — no security claims; key-derived pass schedules are deferred
+  (M6.1+).
+- **Tests (ticket 0030)**: same-key run twice ⇒ gate-type+target sequences bit-identical;
+  different keys under an rng-consuming config (Safe sandwich + shuffle + inject ON, same toggles)
+  ⇒ at least one gate differs; `--seed`-only fallback equals literal `mt19937(seed)`; key precedence
+  over seed; keyed run preserves truth-table + ancilla equivalence. Note `--key=42` (string) ≠
+  `--seed=42` (int).
+- Docs: ADR 0007 written (Q1–Q8 grilling), CONTEXT decision table + phase-2 randomness note, README
+  `--key` / `--seed` + precedence, CHANGELOG this milestone.
+- Tests: 11/11 ctest green (8 suites + 3 CLI-level).
+
+**References:** ADR `0007-keyed-prng-seeding.md`; tickets 0029–0031.
+
 ## Milestone 5 — Sound Equivalent Replacement (2026-09-15)
 
 Sound carrier of the legacy Active mode's "scramble intermediate values" intent: a third local-replace
