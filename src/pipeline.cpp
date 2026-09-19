@@ -92,7 +92,8 @@ static PhaseStats make_phase_stats(const std::string& name, const Circuit& c,
                                    int original_gates, bool ancilla_ok,
                                    int replacements, int replacements_sound,
                                    int replacements_r1,
-                                   int replacements_r2) {
+                                   int replacements_r2,
+                                   int round_index = 0) {
     PhaseMetrics m = measure_structural(c);
     PhaseStats s;
     s.name            = name;
@@ -176,13 +177,20 @@ PipelineResult run_full_pipeline(const PipelineConfig& cfg) {
         "adder", circuit, ORIGINAL_GATES, check_ancilla_invariant(circuit),
         0, 0, 0, 0));
 
+    // Rounds loop (ADR 0008 §Solution / ticket 0033): each mixing shake is
+    // sandwich -> replace -> shuffle. The adder already ran (phase 0, round 0),
+    // so every iteration here is round r. Junk injection runs only on the final
+    // round (round_index == rounds-1): junk volume is additive (one pass), not
+    // multiplicative — a rounds=2 run is adder + 2x(sandwich, replace, shuffle)
+    // + 1x(inject) = 8 phases total.
+    for (int r = 0; r < cfg.rounds; ++r) {
     // Phase 1 — sandwich
     if (cfg.enable_sandwich) {
         apply_sandwich(circuit, safe_ancilla, cfg.sandwich_chain_length,
                        cfg.sandwich_mode, rng);
         phases.push_back(make_phase_stats(
             "sandwich", circuit, ORIGINAL_GATES, check_ancilla_invariant(circuit),
-            0, 0, 0, 0));
+            0, 0, 0, 0, r));
     }
 
     // Phase 2 — local replacement (R1 + optional R2): single-pass, fixed rewrite.
@@ -209,13 +217,16 @@ PipelineResult run_full_pipeline(const PipelineConfig& cfg) {
             0, 0, 0, 0));
     }
 
-    // Phase 4 — inject junk
-    if (cfg.enable_inject) {
+    // Phase 4 — inject junk (final round only: junk is one additive pass, and
+    // injecting on every round would multiply junk volume by rounds — ADR 0008
+    // §Solution. round_index == rounds-1.)
+    if (cfg.enable_inject && r == cfg.rounds - 1) {
         inject_junk_gates(circuit, inject_pool, cfg.inject_count, rng);
         phases.push_back(make_phase_stats(
             "inject", circuit, ORIGINAL_GATES, check_ancilla_invariant(circuit),
-                0, 0, 0, 0));
+            0, 0, 0, 0, r));
     }
+    }  // for (r) — close rounds loop here
 
     return PipelineResult(std::move(circuit), std::move(phases));
 }

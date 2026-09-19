@@ -23,6 +23,12 @@ struct PipelineConfig {
                                // adder's working carries; drive Safe sandwich and
                                // junk injection pool derivation
 
+    // ADR 0008 §Config surface: multi-round mixing. rounds == number of full
+    // (sandwich → replace → shuffle) mixing shakes. rounds == 1 → identical to
+    // today's single-pass output. Orthogonal to key/seed (ADR 0007/0008 §Q6):
+    // key only seeds the rng; rounds only repeats the chain.
+    int  rounds = 1;
+
     // Phase 1 — sandwich
     bool enable_sandwich             = true;
     // Sandwich mode defaults to Safe: Active is known to NOT guarantee
@@ -48,6 +54,9 @@ struct PipelineConfig {
 // ---------------------------------------------------------------------------
 struct PhaseStats {
     std::string name;
+    // ADR 0008 §PhaseStats: per-round attribution. adder→0; per-round phases→
+    // their round's index; inject→rounds-1. Names carry NO round suffix.
+    int  round_index = 0;
     int  gate_count;
     int  wire_count;
     double overhead;       // gate_count / original_gate_count (adder's gate count)

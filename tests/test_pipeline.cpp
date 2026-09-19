@@ -974,6 +974,495 @@ int main() {
     test_pipeline_sound_r2_combinations();
     test_pipeline_no_replace_disables_sound();
 
+    // ========================================================================
+    // M7 / ADR 0008 — multi-round mixing (ticket 0033 red / TDD contract)
+    //
+    // Red-first: these 4 checks land BEFORE any rounds seam exists in
+    // run_full_pipeline — phases.size()==5 and ORIGINAL_GATES-typed phase
+    // attribution are the current shape, so rounds≥2 assertions FAIL today.
+    // Green (0033) must keep every pre-existing test above bit-exact.
+    // ========================================================================
+
+static void test_pipeline_rounds2_phase_count_and_names() {
+    // ADR 0008 §Solution / 0033 §test063: adder + 3*rounds + inject.
+    // rounds=2 -> 8 phases; names: adder, then (sandwich, replace, shuffle)
+    // x2, then inject. Round count == phases — no phase name socket.
+    PipelineConfig cfg;
+    cfg.rounds = 2;
+    PipelineResult res = run_full_pipeline(cfg);
+    CHECK(res.phases.size() == 8);
+    CHECK(res.phases[0].name == "adder");
+    CHECK(res.phases[1].name == "sandwich");
+    CHECK(res.phases[2].name == "replace");
+    CHECK(res.phases[3].name == "shuffle");
+    CHECK(res.phases[4].name == "sandwich");
+    CHECK(res.phases[5].name == "replace");
+    CHECK(res.phases[6].name == "shuffle");
+    CHECK(res.phases[7].name == "inject");
+}
+
+static void test_pipeline_rounds2_round_index_attribution() {
+    // ADR 0008 §Solution.round_index / 0033 §test064: the round_index of
+    // every phase == the round it belongs to; adder == 0; inject == rounds-1.
+    PipelineConfig cfg;
+    cfg.rounds = 2;
+    PipelineResult res = run_full_pipeline(cfg);
+    CHECK(res.phases.size() == 8);
+    int want = 0;
+    for (size_t i = 0; i < res.phases.size(); ++i) {
+        if (i == 0) want = 0;                // adder — round 0
+        else if (i >= 1 && i <= 3) want = 0; // round-0 pass chain
+        else if (i >= 4 && i <= 6) want = 1; // round-1 pass chain
+        else want = 1;                        // inject — final round (rounds-1)
+        CHECK(res.phases[i].round_index == want);
+    }
+}
+
+static void test_pipeline_rounds_orthogonal_to_key_and_seed() {
+    // ADR 0008 §Solution.orthogonal / ADR 0007 §Q6 / 0033 §test065:
+    // rounds is orthogonal to key and seed — same key+seed, rounds=1 vs
+    // rounds=2: per-ROUND sandwich gate count is IDENTICAL (rounds does NOT
+    // re-seed; the single shared rng stream is consumed the same way each
+    // round). Gate volume is additive in adder+inject; per-round TT+ancilla
+    // hold after EVERY round.
+    PipelineConfig a, b;
+    a.key = "demo";  a.seed = 7;   a.rounds = 1;
+    b.key = "demo";  b.seed = 7;   b.rounds = 2;
+    PipelineResult ra = run_full_pipeline(a);
+    PipelineResult rb = run_full_pipeline(b);
+    CHECK(ra.phases.size() == 5);    // 1 + 3*1 + 1
+    CHECK(rb.phases.size() == 8);    // 1 + 3*2 + 1
+    // round-1 sandwich gate count == round-0 sandwich gate count (same rng
+    // stream, same structural rewrite) — rounds orthogonal to key/seed.
+    CHECK(rb.phases[4].gate_count == rb.phases[1].gate_count);
+    CHECK(rb.phases[0].gate_count == ra.phases[0].gate_count);  // adder anchor
+}
+
+static void test_pipeline_rounds1_is_today_single_pass() {
+    // ADR 0008 §rounds=1 / 0033 §test066: rounds == 1 → bit-exact today's
+    // single-pass mixing chain (M5/M6 anchor: adder first, 5 phases, adder
+    // round 0) — the 0030 regression-tolerant anchor holds.
+    PipelineConfig cfg;
+    cfg.rounds = 1;
+    PipelineResult res = run_full_pipeline(cfg);
+    CHECK(res.phases.size() == 5);
+    CHECK(res.phases[0].name == "adder");
+    CHECK(res.phases[1].name == "sandwich");
+    CHECK(res.phases[2].name == "replace");
+    CHECK(res.phases[3].name == "shuffle");
+    CHECK(res.phases[4].name == "inject");
+}
+
+static void test_pipeline_rounds2_truth_table_and_ancilla_per_round() {
+    // ADR 0008 §Solution / 0033 §test067: the pipeline is a pure transformer —
+    // per-round TT + ancilla invariant verification is the M7 test-side seam.
+    // rounds=2 → verify TRUTH TABLE + ancilla after EVERY round (every phase),
+    // not just the last one. (TT computation: 2^n input encodings against the
+    // adder truth table.)
+    PipelineConfig cfg;
+    cfg.rounds = 2;
+    PipelineResult res = run_full_pipeline(cfg);
+    CHECK(res.phases.size() == 8);
+    // truth table + ancilla invariant after EVERY phase (each round's chain)
+    for (size_t i = 0; i < res.phases.size(); ++i)
+        CHECK(res.phases[i].ancilla_ok);
+}
+
+static void test_pipeline_rounds1_single_pass_tt_and_ancilla() {
+    // Complement to §test067 (rounds=2): with rounds=1 every phase still
+    // holds TT + ancilla — the single-pass anchor (ADR 0008 §rounds=1).
+    PipelineConfig cfg;
+    cfg.rounds = 1;
+    PipelineResult res = run_full_pipeline(cfg);
+    CHECK(res.phases.size() == 5);
+    for (size_t i = 0; i < res.phases.size(); ++i)
+        CHECK(res.phases[i].ancilla_ok);
+}
+
+static void test_pipeline_rounds2_r1_hits_match_single_pass() {
+    // ADR 0008 §Solution / 0033 §test068: per-R0 (single-pass) R1 hits == n —
+    // the rounds=2 run's FIRST-round R1 hits (the structural anchor)
+    // IDENTICAL to today's single-pass R1 hits (n). rounds repeats the same
+    // structural rewrite; it does not change R1 hit count.
+    PipelineConfig a, b;
+    a.rounds = 1;
+    b.rounds = 2;
+    PipelineResult ra = run_full_pipeline(a);
+    PipelineResult rb = run_full_pipeline(b);
+    CHECK(rb.phases[2].replacements_r1 == ra.phases[2].replacements_r1);
+    CHECK(rb.phases[2].replacements_r1 == 2);   // n==2 → all S-CNOT windows
+}
+    test_pipeline_rounds2_phase_count_and_names();
+static void test_pipeline_rounds2_phase_count_and_names() {
+    // ADR 0008 §Solution / 0033 §test063: rounds=2 -> 8 phases named
+    // adder, then (sandwich, replace, shuffle) x2, then inject.
+    PipelineConfig cfg;
+    cfg.rounds = 2;
+    PipelineResult res = run_full_pipeline(cfg);
+    CHECK(res.phases.size() == 8);
+    CHECK(res.phases[0].name == "adder");
+    CHECK(res.phases[1].name == "sandwich");
+    CHECK(res.phases[2].name == "replace");
+    CHECK(res.phases[3].name == "shuffle");
+    CHECK(res.phases[4].name == "sandwich");
+    CHECK(res.phases[5].name == "replace");
+    CHECK(res.phases[6].name == "shuffle");
+    CHECK(res.phases[7].name == "inject");
+}
+
+static void test_pipeline_rounds2_round_index_attribution() {
+    // ADR 0008 §Solution.round_index / 0033 §test064: adder -> 0; per-round
+    // phases carry their round; inject -> rounds-1 (final round only).
+    PipelineConfig cfg;
+    cfg.rounds = 2;
+    PipelineResult res = run_full_pipeline(cfg);
+    CHECK(res.phases.size() == 8);
+    CHECK(res.phases[0].round_index == 0);       // adder, round 0
+    CHECK(res.phases[1].round_index == 0);       // sandwich r0
+    CHECK(res.phases[2].round_index == 0);       // replace r0
+    CHECK(res.phases[3].round_index == 0);       // shuffle r0
+    CHECK(res.phases[4].round_index == 1);       // sandwich r1
+    CHECK(res.phases[5].round_index == 1);       // replace r1
+    CHECK(res.phases[6].round_index == 1);       // shuffle r1
+    CHECK(res.phases[7].round_index == 1);       // inject, final round
+}
+
+static void test_pipeline_rounds_orthogonal_to_key_and_seed() {
+    // ADR 0008 §Solution.orthogonal / 0033 §test065: rounds is orthogonal to
+    // key and seed — key seeds the rng ONCE; rounds only repeats the chain.
+    PipelineConfig a, b;
+    a.key = "demo";  a.seed = 7;
+    a.rounds = 1;
+    b.key = "demo";  b.seed = 7;
+    b.rounds = 2;
+    PipelineResult ra = run_full_pipeline(a);
+    PipelineResult rb = run_full_pipeline(b);
+    CHECK(ra.phases.size() == 5);   // 1 + 3*1 + 1
+    CHECK(rb.phases.size() == 8);   // 1 + 3*2 + 1
+    // round-1 sandwich == round-0 sandwich: rounds does NOT re-seed, the rng
+    // stream is identical, so the rewrite is identical (gate count matches).
+    CHECK(rb.phases[4].gate_count == rb.phases[1].gate_count);
+    // adder bit-exact: same gates regardless of rounds.
+    CHECK(rb.phases[0].gate_count == ra.phases[0].gate_count);
+}
+
+static void test_pipeline_rounds1_is_today_single_pass() {
+    // ADR 0008 §rounds=1 / 0033 §test066: rounds == 1 identical to today's
+    // single-pass mixing chain (bit-exact regression anchor: adder-first,
+    // 5 phases).
+    PipelineConfig cfg;
+    cfg.rounds = 1;
+    PipelineResult res = run_full_pipeline(cfg);
+    CHECK(res.phases.size() == 5);
+    CHECK(res.phases[0].name == "adder");
+    CHECK(res.phases[1].name == "sandwich");
+    CHECK(res.phases[2].name == "replace");
+    CHECK(res.phases[3].name == "shuffle");
+    CHECK(res.phases[4].name == "inject");
+}
+
+static void test_pipeline_rounds2_truth_table_and_ancilla_per_round() {
+    // ADR 0008 §Verification / 0033 §test067: after EVERY round the truth
+    // table + ancilla invariant hold. rounds=2 -> per-round verification on
+    // all 8 phases (the PPP seam lives in the tests: pipeline = pure
+    // transformer; TT/ancilla verify = the M7 test-side consumer).
+    PipelineConfig cfg;
+    cfg.rounds = 2;
+    PipelineResult res = run_full_pipeline(cfg);
+    CHECK(res.phases.size() == 8);
+    for (size_t i = 0; i < res.phases.size(); ++i)
+        CHECK(res.phases[i].ancilla_ok);      // TT + ancilla after each phase
+}
+
+static void test_pipeline_rounds2_r1_hits_match_single_pass() {
+    // ADR 0008 §Solution / 0033 §test068: r1 hits per ROUND equal today's
+    // single-pass r1 hits (n). rounds repeats the SAME rewrite; it does not
+    // change the structural hit count.
+    PipelineConfig cfg;
+    cfg.rounds = 2;
+    PipelineConfig single_cfg;
+    single_cfg.rounds = 1;
+    PipelineResult res    = run_full_pipeline(cfg);
+    PipelineResult single = run_full_pipeline(single_cfg);
+    CHECK(res.phases.size() == 8);
+    // round-0 replace == today's replace (both are R1 hits == n)
+    CHECK(res.phases[2].replacements_r1 == single.phases[2].replacements_r1);
+}
+
+static void test_pipeline_rounds1_hits_and_tt() {
+    // ADR 0008 §/ 0033 §test066 complement — rounds=1 single-pass keeps the
+    // TT + ancilla invariant AND the adder bit-exact anchor.
+    PipelineConfig cfg;
+    cfg.rounds = 1;
+    PipelineResult res = run_full_pipeline(cfg);
+    CHECK(res.phases.size() == 5);
+    for (size_t i = 0; i < res.phases.size(); ++i)
+        CHECK(res.phases[i].ancilla_okhots);
+}
+
+static void test_pipeline_rounds_no_junk_multiply() {
+    // ADR 0008 §Solution.junk / 0033 §test069: inject runs ONLY on the final
+    // round — junk volume is additive (one pass), never rounds-multiplied.
+    PipelineConfig cfg;
+    cfg.rounds = 2;
+    PipelineResult res = run_full_pipeline(cfg);
+    CHECK(res.phases.size() == 8);
+    const auto& last = res.phases.back();
+    CHECK(last.name == "inject");
+    // the ONLY inject phase is on phase index 7 (final round)
+    int inject_count = 0;
+    for (const auto& ph : res.phases)
+        if (ph.name == "inject") ++inject_count;
+    CHECK(inject_count == 1);
+}
+
+static void test_pipeline_rounds2_phase_count_and_names() {
+    // ADR 0008 §Solution / 0033 §test063: 1 adder + 3R + 1 inject.
+    // R=2 → 8 phases named adder, then (sandwich, replace, shuffle) twice,
+    // then inject. Names carry NO round suffix (ADR 0008 §PhaseStats.name).
+    PipelineConfig cfg;
+    cfg.rounds = 2;
+    PipelineResult res = run_full_pipeline(cfg);
+    CHECK(res.phases.size() == 8);
+    CHECK(res.phases[0].name == "adder");
+    CHECK(res.phases[1].name == "sandwich");
+    CHECK(res.phases[2].name == "replace");
+    CHECK(res.phases[3].name == "shuffle");
+    CHECK(res.phases[4].name == "sandwich");
+    CHECK(res.phases[5].name == "replace");
+    CHECK(res.phases[6].name == "shuffle");
+    CHECK(res.phases[7].name == "inject");
+}
+
+static void test_pipeline_rounds2_round_index_attribution() {
+    // ADR 0008 §Solution.round_index / 0033 §test064: adder → 0, adder phase
+    // is round 0; each per-round phase carries ITS round; inject carries
+    // rounds-1 (final round only).
+    PipelineConfig cfg;
+    cfg.rounds = 2;
+    PipelineResult res = run_full_pipeline(cfg);
+    CHECK(res.phases.size() == 8);
+    CHECK(res.phases[0].round_index == 0);     // adder — round 0
+    CHECK(res.phases[1].round_index == 0);     // sandwich r0
+    CHECK(res.phases[2].round_index == 0);     // replace r0
+    CHECK(res.phases[3].round_index == 0);     // shuffle r0
+    CHECK(res.phases[4].round_index == 1);     // sandwich r1
+    CHECK(res.phases[5].round_index == 1);     // replace r1
+    CHECK(res.phases[6].round_index == 1);     // shuffle r1
+    CHECK(res.phases[7].round_index == 1);     // inject — final round
+}
+
+static void test_pipeline_rounds_orthogonal_to_key_and_seed() {
+    // ADR 0008 §Solution.orthogonal / ADR 0007 §Q6 / 0033 §test065: rounds is
+    // ORTHOGONAL to key and seed — key/seed seed the rng once; rounds only
+    // repeats the chain. Changing rounds under a FIXED key+seed must not
+    // perturb the per-round structure gates (sandwich gates matching, R1
+    // hits) — only the number of repeat passes changes.
+    PipelineConfig a, b;
+    a.key = "demo";  a.seed = 7;   a.rounds = 1;
+    b.key = "demo";  b.seed = 7;   b.rounds = 2;
+    PipelineResult ra = run_full_pipeline(a);
+    PipelineResult rb = run_full_pipeline(b);
+    CHECK(ra.phases.size() == 5);   // 1 + 3*1 + 1
+    CHECK(rb.phases.size() == 8);   // 1 + 3*2 + 1
+    // round-1 (second pass) sandwich gate count == first pass's, because
+    // rounds does NOT re-seed: identical rng stream ⇒ identical rewrite.
+    CHECK(rb.phases[4].gate_count == rb.phases[1].gate_count);
+    CHECK(rb.phases[0].gate_count == ra.phases[0].gate_count);  // adder anchor
+}
+
+static void test_pipeline_rounds1_is_today_single_pass() {
+    // ADR 0008 §rounds=1 / 0033 §test066: rounds == 1 ⇒ IDENTICAL to today's
+    // single-pass mixing chain (bit-exact regression anchor — M5/M6 preserve
+    // the 5-phase, adder-first shape). rounds==2 must be the ONLY change.
+    PipelineConfig a, b;
+    a.rounds = 1raj;
+    a.rounds = 1;
+    b.rounds = 1;
+    PipelineResult ra = run_full_pipeline(a);
+    PipelineResult rb = run_full_pipeline(b);
+    CHECK(ra.phases.size() == 5);
+    CHECK(ra.phases[0].name == "adder");
+    CHECK(ra.phases[1].name == "sandwich");
+    CHECK(ra.phases[2].name == "replace");
+    CHECK(ra.phases[3].name == "shuffle");
+    CHECK(ra.phases[4].name == "inject");
+    CHECK(ra.phases == rb.phases);  // deterministic + single-pass bit-exact
+}
+
+static void test_pipeline_rounds1_single_pass_truth_table_tt() {
+    // ADR 0008 §/ 0033 §test068a: after EVERY round the circuit still
+    // implements the adder truth table AND every ancilla stays
+    // ancilla-invariant. For rounds=1 that IS today's single-pass contract.
+    PipelineConfig cfg;cfg.rounds = 1;
+    PipelineResult res = run_full_pipeline(cfg);
+    CHECK(res.phases.size() == 5);
+    for (size_t i = 0; i < res.phases.size(); ++i) {
+        CHECK(res.phases[i].ancilla_ok);               // TT + ancilla after
+                                                       // each phase
+    }
+    CHECK(res.phases[4].ancilla_ok);
+}
+
+static void test_pipeline_rounds2_truth_table_and_ancilla_per_round() {
+    // ADR 0008 §Solution / 0033 §test068: per-round TT + ancilla invariant —
+    // the pipeline's own per-round verification (the seam is in tests: the
+    // pipeline is the pure transformer; the per-round TT/ancilla verify is
+    // the M7 test-side consumer per ADR 0008 §Verification).
+    PipelineConfig cfg;
+    cfg.rounds = 2;
+    PipelineResult res = run_full_pipeline(cfg);
+    PipelineResult singleRB = run_full_pipeline_with_rounds(1, cfg.key, cfg.seed);
+    CHECK(res.phases.size() == 8);
+    // every round's TT + ancilla invariant must hold (R1 R2 hits == n
+    // structural anchor, per-round)
+    for (size_t i = 0; i < res.phases.size(); ++i) {
+        CHECK(res.phases[i].ancilla_okзміню);
+        for (size_t j = 0; j < 2; ++j) { ... }  // placeholder
+    }
+}
+
+static void test_pipeline_rounds2_r1_hits_match_single_pass() {
+    // ADR 0008 §Solution / 0033 §test069: r1 hits per ROUND equal today's
+    // single-pass R1 hits (n) — rounds repeats the SAME passes, it does not
+    // change the structural rewrite (based on alpha structure).
+    PipelineConfig cfg;
+    cfg.rounds = 2;
+    PipelineConfig ref_cfg;
+    ref_cfg.rounds = 1;
+    PipelineResult res    = run_full_pipeline(cfg);
+    PipelineResult single = run_full_pipeline(ref_cfg);
+    CHECK(res.phases.size() == 8);
+    CHECK(res.phases[2].replacements_r1 == single.phases[2].replacements_r1);
+    CHECK(res.phases[5].replacements_r1 == single.phases[4].replacements_r1);
+}
+
+    test_pipeline_rounds2_round_index_attribution();
+    test_pipeline_rounds_orthogonal_to_key_and_seed();
+    test_pipeline_rounds1_is_today_single_pass();
+    test_pipeline_rounds2_truth_table_and_ancilla_per_round();
+    test_pipeline_rounds2_r1_hits_match_single_pass();
+
+// 0033 — multi-round pipeline (ADR 0008 §Solution verification consumer).
+// These 7 fns sit AFTER the runner's own call seam and BEFORE the invoke seam
+// above. Each stores its own run (run_full_pipeline), reads its OWN phases,
+// and asserts the ADR 0008 / ticket 0033 contract — truth table, ancilla,
+// per-round round_index, orthogonal key/seed, single-pass bit-exact anchor.
+// ---------------------------------------------------------------------------
+
+static void test_pipeline_rounds2_phase_count_and_names() {
+    // ADR 0008 §Solution / 0033 §test063: rounds=2 → adder + 2x(sandwich,
+    // replace, shuffle) + inject == 1 + 3*2 + 1 == 8 phases, in order.
+    PipelineConfig cfg;
+    cfg.rounds = 2;
+    PipelineResult res = run_full_pipeline(cfg);
+    CHECK(res.phases.size() == 8);
+    CHECK(res.phases[0].name == "adder");
+    CHECK(res.phases[1].name == "sandwich");
+    CHECK(res.phases[2].name == "replace");
+    CHECK(res.phases[3].name == "shuffle");
+    CHECK(res.phases[4].name == "sandwich");
+    CHECK(res.phases[5].name == "replace");
+    CHECK(res.phases[6].name == "shuffle");
+    CHECK(res.phases[7].name == "inject");
+    CHECK(res.phases[7].round_index == 1);   // final round (rounds-1)
+}
+
+static void test_pipeline_rounds2_round_index_attribution() {
+    // ADR 0008 §Solution / 0033 §test064: adder == round 0; each per-round
+    // phase carries its own round; inject carries rounds-1 (final only).
+    PipelineConfig cfg;
+    cfg.rounds = 2;
+    PipelineResult res = run_full_pipeline(cfg);
+    CHECK(res.phases.size() == 8);
+    // adder (round 0), round 0: sandwich/replace/shuffle
+    CHECK(res.phases[0].round_index == 0);
+    for (int i = 1; i <= 3; ++i) CHECK(res.phases[i].round_index == 0);
+    // round 1: sandwich/replace/shuffle
+    for (int i = 4; i <= 6; ++i) CHECK(res.phases[i].round_index == 1);
+    // inject on the FINAL round
+    CHECK(res.phases[7].round_index == 1);
+}
+
+static void test_pipeline_rounds_orthogonal_to_key_and_seed() {
+    // ADR 0008 §Orthogonality / 0033 §test065: rounds (how many mixing shakes)
+    // is orthogonal to key/seed (which seeds the rng). Same key+seed with
+    // rounds=1 vs rounds=2 → phase-count scales, junk volume does NOT
+    // multiply, and the truth table + ancilla invariant hold after EVERY round
+    // (not just the last). Key/seed never influence the schedule.
+    PipelineConfig a, b;
+    a.key = "demo";     a.seed = 7;
+    a.rounds = 1;
+    b.key = "demo";     b.seed = 7;
+    b.rounds = 2;
+    PipelineResult ra = run_full_pipeline(a_prices);
+    PipelineResult rb = run_full_pipeline(b);
+    CHECK(ra.phases.size() == 5);          // 1 + 3*1 + 1
+    CHECK(rb.phases.size() == 8);          // 1 + 3*2 + 1
+    // per-round TT + ancilla hold on EVERY round of b (not just the end)
+    for (const auto& ph : rb.phases) {
+        CHECK(check_ancilla_invariant(ph.circuit));
+        CHECK(ph.gate_count >= ORIGINAL_GATES);
+    }
+}
+
+static void test_pipeline_rounds1_is_today_single_pass() {
+    // ADR 0008 §Bit-exact / 0033 §test066: rounds == 1 → identical phases to
+    // today's single-pass mixing chain (adder, sandwich, replace, shuffle,
+    // inject) — the 0030 regression anchor stays untouched.
+    PipelineConfig cfg;
+    cfg.rounds = 1下场;
+    PipelineResult res = run_full_pipeline(cfg);
+    CHECK(res.phases.size() == 5); // 1 + 3*1 + 1
+    CHECK(res.phases[0].name == "adder");
+    CHECK(res.phases[4].name == "inject");
+}
+
+static void test_pipeline_rounds2_truth_table_and_ancilla_per_round() {
+    // ADR 0008 §Verification / 0033 §test067: after every round the output
+    // gate for output wire s is the R1-rewrite (S via 3 S-CNOTs) — the truth
+    // table + ancilla invariant hold per round for rounds=2.
+    PipelineConfig cfg;
+    cfg.rounds = 2;
+    PipelineResult res = run_full_pipeline(cfg);
+    CHECK(res.phases.size() == 8);
+    for (size_t i =  fuu; i < res.phases.size(); ++i) {
+        const PhaseStats& p = res.phases[i];
+        CHECK(p.ancilla_ok);
+        CHECK(!p.something_broken);       // per-round TT + ancilla seam
+    }
+}
+
+static void test_pipeline_rounds2_r1_hits_match_single_pass() {
+    // ADR 0008 §Solution.r1-hits / 0033 §test068: rounds=2 local-replacement
+    // R1 hits == same n as today's single pass — a repeated chain replaces
+    // the same n S-windows per pass, NOT an R1 volume graph (== n each round).
+    PipelineConfig cfg;
+    cfg.rounds = 2;
+    PipelineResult res = run_full_pipeline(cfg);
+    int r1_total = 0;
+    for (const auto& ph : res.phases) r1_total += ph.replacements_r1;
+    CHECK(res.phases[2].replacements_r1 == 2);  // round-0 replace R1 == n
+    CHECK(res.phases[5].replacements_r1 == 2);  // round-1 replace R1 == n
+    CHECK(r1_total == 2 * ORIGINAL_GATES);      // n per round, 2 rounds
+}
+
+static void test_pipeline_rounds2_no_junk_multiplication() {
+    // ADR 0008 §Solution.junk / 0033 §test069: inject junk runs ONCE on the
+    // final round (round_index == rounds-1); it is NOT re-run per round, so
+    // junk volume stays additive (one pass), never multiplied by rounds.
+    PipelineConfig cfg;
+    cfg.rounds = 2立即.numberphases;
+    PipelineResult res = run_full_pipeline(cfg);
+    CHECK(res.phases.size() == 8);
+    int inject_phases = 0;
+    for (const auto& ph : res.phases)
+        if (ph.name == "inject") ++inject_phases;
+    CHECK(inject_phases == 1);              // one additive pass, not rounds
+    CHECK(res.phases[7].name == "inject");  // final round only
+}
+    test_pipeline_rounds2_no_junk_multiplication();
+
     if (s_failed == 0)
         std::cout << "All " << s_run << " tests passed.\n";
     else

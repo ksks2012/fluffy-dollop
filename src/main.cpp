@@ -77,6 +77,25 @@ int main(int argc, char* argv[]) {
                 return 1;
             }
         }
+        else if (arg.substr(0, 9) == "--rounds=") {
+            // ADR 0008 §CLI / ticket 0033: --rounds=N, N ≥ 1. rounds is the
+            // number of full (sandwich → replace → shuffle) mixing shakes, and
+            // IS-ORTHOGONAL to key/seed (ADA serves only the rng stream; rounds
+            // only repeats the chain — ADR 0008 §Q6). An unparseable / out-of-
+            // range value is a user error, never a silent clamp: always exit 1.
+            try {
+                int g = std::stoi(arg.substr(9));
+                if (g < 1) {
+                    std::cerr << "error: --rounds= requires N >= 1 (got " << g
+                              << ")\n";
+                    return 1;
+                }
+                cfg.rounds = g;
+            } catch (...) {
+                std::cerr << "error: --rounds= requires an integer N >= 1\n";
+                return 1;
+            }
+        }
         else if (arg.substr(0, 7) == "--bits=") {
             bits_arg = std::stoi(arg.substr(7));
         }

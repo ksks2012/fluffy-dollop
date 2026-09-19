@@ -23,6 +23,12 @@ target_link_libraries(gate_driver PRIVATE common_lib)
 # ADR 0007 CLI-level checks (ticket 0030): gate_driver exit codes.
 add_test(NAME cli_key_empty_errors COMMAND gate_driver --key=)
 set_tests_properties(cli_key_empty_errors PROPERTIES WILL_FAIL TRUE)
+# ADR 0008 §CLI / ticket 0033: --rounds=N must be N >= 1; 0 / unparseable /
+# empty are user errors (error + exit 1), never a silent clamp to 1.
+add_test(NAME cli_rounds_zero_errors COMMAND gate_driver --rounds=0 --no-inject)
+set_tests_properties(cli_rounds_zero_errors PROPERTIES WILL_FAIL TRUE)
+add_test(NAME cli_rounds_empty_errors COMMAND gate_driver --rounds= --no-inject)
+set_tests_properties(cli_rounds_empty_errors PROPERTIES WILL_FAIL TRUE)
 add_test(NAME cli_key_then_seed COMMAND gate_driver --key=demo --seed=7 --no-inject)
 add_test(NAME cli_seed_only COMMAND gate_driver --seed=7 --no-inject)
 

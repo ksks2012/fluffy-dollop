@@ -9,7 +9,7 @@ Milestone M7 main build.
 
 **Blocked by:** 0032 (ADR 0008 + seams)
 
-**Status:** open
+**Status:** in progress (0032 merged; 0033 implementing)
 
 ## Config / CLI
 
