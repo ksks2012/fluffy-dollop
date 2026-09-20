@@ -66,6 +66,7 @@ Requires CMake ≥ 3.16 and a C++17 compiler.
 ./build/gate_driver --verbose-metrics        # print per-depth gate histogram of final circuit
 ./build/gate_driver --seed=7                 # set the legacy scalar seed (default 42)
 ./build/gate_driver --key="project-foo"      # keyed PRNG: deterministic, replayable (ADR 0007)
+./build/gate_driver --rounds=2              # multi-shake mixing: 2 full (sandwich -> replace -> shuffle) passes (ADR 0008); junk inject final round only, additive
 ```
 
 `--no-sandwich` takes precedence over `--sandwich-mode`.  
