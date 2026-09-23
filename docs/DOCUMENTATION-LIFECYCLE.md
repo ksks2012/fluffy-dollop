@@ -42,6 +42,7 @@ project/
 │   ├── CONTEXT.md          # single source of truth (consolidates core context and Accepted ADRs)
 │   ├── CHANGELOG.md        # version history and milestone summaries
 │   ├── adr/                # architecture decision records (never deleted, marked Superseded)
+│   ├── ticket/             # specs/issues (to-spec format); checklists live here, not in ADRs
 │   ├── standards/          # development and technical standards
 │   └── archive/            # archive directory (suggested for .gitignore)
 │       ├── summaries/      # completed session summaries
